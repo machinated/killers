@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 #include <time.h>
 #include <mpi.h>
 #include "messaging.h"
@@ -19,11 +20,11 @@ void milisleep(long ms)
     }
 }
 
-void Log(char* format, ...)
+void Log(const char* format, ...)
 {
     const char* preFormat = "PROCESS %*d CLK %*d:";
     char* string = calloc(150, 1);
-    sprintf(string, preFormat, processId, 3, localClock, 6);
+    sprintf(string, preFormat, 3, processId, 6, localClock);
 
     strncat(string, format, 100);   // append format to string
     const char* nl = "\n";
@@ -87,6 +88,22 @@ void Send(void* data, int dest, int tag)
 void SendToAll(void* data, int tag)
 {
     for(int i = 0; i < nProcesses; i++)
+    {
+        Send(data, i, tag);
+    }
+}
+
+void SendToCompanies(void* data, int tag)
+{
+    for (int i = 0; i < nCompanies; i++)
+    {
+        Send(data, i, tag);
+    }
+}
+
+void SendToClients(void* data, int tag)
+{
+    for (int i = nCompanies; i < nProcesses; i++)
     {
         Send(data, i, tag);
     }

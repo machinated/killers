@@ -1,3 +1,4 @@
+#define _BSD_SOURCE
 #include <mpi.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -15,16 +16,16 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &processId);
     MPI_Comm_size(MPI_COMM_WORLD, &nProcesses);
 
-    nCompanies = 5;
-    nKillers = 2;
+    nCompanies = 2;
+    nKillers = 1;
     // TODO cmd line arguments
 
     assert(nCompanies < nProcesses);
 
     // init RNG
     char* bytestate = malloc(128);
-    initstate_r(processId, NULL, 128, &randState);
-    free(bytestate);
+    randState = malloc(sizeof(struct random_data));
+    initstate_r(processId, bytestate, 128, randState);
 
     if (processId < nCompanies)
     {

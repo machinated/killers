@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 199309L
+#define _BSD_SOURCE
 #include <stdlib.h>
 #include <time.h>
 #include <strings.h>
@@ -88,11 +89,13 @@ int AwaitAck(int client)
 {
     Message msg;
     int msgSender;
-    int ret =  Receive(&msg, TAG_ACK, &msgSender);
-    assert(ret == ACK_OK || ret == ACK_REJECT);
+    Receive(&msg, TAG_ACK, &msgSender);
+    MessageAck* msgAckP = (MessageAck*) &(msg.data.data);
+    int ack = msgAckP->ack;
+    assert(ack == ACK_OK || ack == ACK_REJECT);
     if (msgSender == client)
     {
-        return ret;
+        return ack;
     }
     else
     {
@@ -104,16 +107,16 @@ int AwaitAck(int client)
 
 void QueueAdd(int client)
 {
-    lockMutex(&queueMutex);
+    //lockMutex(&queueMutex);
     queue[queueLen] = client;
     SendUpdate(queue[queueLen], client);
     queueLen++;
-    unlockMutex(&queueMutex);
+    //unlockMutex(&queueMutex);
 }
 
 void QueueRemove(int client)
 {
-    lockMutex(&queueMutex);
+    //lockMutex(&queueMutex);
     int found = 0;
     int qi;
     for (qi = 0; qi < queueLen; qi++)
@@ -136,8 +139,8 @@ void QueueRemove(int client)
     {
         Log("Attempting to remove %d, but not in queue", client);
     }
+    //unlockMutex(&queueMutex);
 }
-unlockMutex(&queueMutex);
 
 void ReceiveRequest()
 {
@@ -157,46 +160,37 @@ void ReceiveCancel()
     QueueRemove(client);
 }
 
-void CompanyReceive()
-{
-    Message msg;
-    int tag;
-    int sender;
-
-    ReceiveAll(&msg, &tag, &sender);
-    lockMutex(&queueMutex);
-    switch (tag)
-    {
-        case TAG_REQUEST:
-        {
-            QueueAdd(sender);
-            break;
-        }
-        case TAG_CANCEL:
-        {
-            QueueRemove(sender);
-            break
-        }
-        case TAG_REVIEW:
-        {
-            break;
-        }
-    }
-    unlockMutex(&queueMutex);
-}
-
-void Listen(void* param)
+void* ListenRequest(void* param __attribute__((unused)))
 {
     while(1)
     {
-        CompanyReceive();
+        ReceiveRequest();
+    }
+}
+
+void* ListenCancel(void* param __attribute__((unused)))
+{
+    while(1)
+    {
+        ReceiveCancel();
     }
 }
 
 #define TIMESPEC_ZERO(t) (t.tv_sec == 0 && t.tv_nsec == 0)
 
+void SetKillerTimer(int killer)
+{
+    Timespec end;
+    int32_t randNumber;
+    random_r(randState, &randNumber);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    AddTime(&end, randNumber % (KILLTIME * 2));
+    killers[killer] = end;
+}
+
 void NewJob(int ikiller)
 {
+    lockMutex(&queueMutex);
     if (!TIMESPEC_ZERO(killers[ikiller]))   // there was a previous job
     {
         assert(queueLen > 0);
@@ -219,11 +213,12 @@ void NewJob(int ikiller)
 
     if (queueLen > 0)   // there is a new job
     {
-        for (int qi = 0; qi < queleLen; qi++)
+        int qi;
+        for (qi = 0; qi < queueLen; qi++)   // find client
         {
             int client = queue[qi];
             SendUpdate(Q_INPROGRESS, client);
-            if (AwiatAck(client) == ACK_OK)
+            if (AwaitAck(client) == ACK_OK)
             {
                 break;
             }
@@ -232,32 +227,36 @@ void NewJob(int ikiller)
                 QueueRemove(client);
             }
         }
-
-        // set finish time for new fob
-        Timespec end;
-        int32_t randNumber;
-        random_r(&randState, &randNumber);
-        clock_gettime(CLOCK_MONOTONIC, &end);
-        AddTime(&end, randNumber % (KILLTIME * 2));
-        killers[ikiller] = end;
+        if (qi < queueLen)  // found client
+        {
+            // set finish time for new fob
+            SetKillerTimer(ikiller);
+        }
+        else
+        {
+            killers[ikiller].tv_sec = 0;
+            killers[ikiller].tv_nsec = 0;
+        }
     }
     else                // no new job
     {
         killers[ikiller].tv_sec = 0;
         killers[ikiller].tv_nsec = 0;
     }
+    unlockMutex(&queueMutex);
 }
 
 void RunCompany()
 {
-    queue = calloc(nProcesses, sizeof(int));
+    queue = (int*) calloc(nProcesses, sizeof(int));
     queueLen = 0;
-    pthead_mutex_init(&queueMutex, NULL);
-    killers = calloc(nKillers, sizeof(Timespec));
-    int* inqueue = calloc(nProcesses, sizeof(int));
+    pthread_mutex_init(&queueMutex, NULL);
+    killers = (Timespec*) calloc(nKillers, sizeof(Timespec));
+    int* inqueue = (int*) calloc(nProcesses, sizeof(int));
 
-    pthread_t listenerThread;
-    pthread_create(&listenerThread, NULL, &Listen, NULL);
+    pthread_t requestListener, cancelListener;
+    pthread_create(&requestListener, NULL, &ListenRequest, NULL);
+    pthread_create(&cancelListener, NULL, &ListenCancel, NULL);
 
     while(1)
     {
@@ -274,6 +273,7 @@ void RunCompany()
                 SendUpdate(Q_AVAILABLE, client);
             }
         }
+        unlockMutex(&queueMutex);
 
         for (int i = 0; i < nKillers; i++)
         {
@@ -282,7 +282,6 @@ void RunCompany()
                 NewJob(i);
             }
         }
-        unlockMutex(&queueMutex);
         milisleep(1);
     }
 }

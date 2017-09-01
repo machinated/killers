@@ -7,7 +7,7 @@
 
 void milisleep(long ms);
 
-void Log(char* format, ...);
+void Log(const char* format, ...);
 
 uint64_t localClock;
 
@@ -19,7 +19,7 @@ int nCompanies;
 
 int nKillers;
 
-struct random_data randState;
+struct random_data* randState;
 
 #define Q_UNKNOWN 0
 #define Q_AVAILABLE -3
@@ -33,5 +33,9 @@ void ReceiveAll(Message* msgP, int* tag, int* sender);
 void Send(void* data, int dest, int tag);
 
 void SendToAll(void* data, int tag);
+
+void SendToCompanies(void* data, int tag);
+
+void SendToClients(void* data, int tag);
 
 #endif

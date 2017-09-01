@@ -15,12 +15,29 @@ typedef enum State
     WAITING,
     NOQUEUE,
     QUEUE,
-    INPROGRESS,
+    INPROGRESS
 } State;
 
 float* reputations;
 
 int* queues;
+
+void SendRequest(int pid)
+{
+    Send(NULL, pid, TAG_REQUEST);
+}
+
+void SendCancel(int pid)
+{
+    Send(NULL, pid, TAG_CANCEL);
+}
+
+void SendAck(int pid, int ack)
+{
+    MessageAck msgAck;
+    msgAck.ack = ack;
+    Send(&msgAck, pid, TAG_ACK);
+}
 
 void HandleReview(MessageReview* msg)
 {
@@ -38,12 +55,12 @@ int ReceiveUpdate(State state)
         ReceiveAll(&msg, &tag, &sender);
         if (tag == TAG_REVIEW)
         {
-            MessageReview* msgReviewP = (MessageReview*) &(msg.data);
+            MessageReview* msgReviewP = (MessageReview*) &(msg.data.data);
             HandleReview(msgReviewP);
         }
         else if (tag == TAG_UPDATE)
         {
-            MessageUpdate* msgUpdateP = (MessageUpdate*) &(msg.data);
+            MessageUpdate* msgUpdateP = (MessageUpdate*) &(msg.data.data);
             int queuePos = msgUpdateP->queueIndex;
             if (queuePos == Q_INPROGRESS)
             {
@@ -67,41 +84,25 @@ int ReceiveUpdate(State state)
     }
 }
 
-void SendRequest(int pid)
-{
-    Send(NULL, pid, TAG_REQUEST);
-}
-
-void SendCancel(int pid)
-{
-    Send(NULL, pid, TAG_CANCEL);
-}
-
-void SendAck(int pid, int ack)
-{
-    MessageAck msgAck;
-    msgAck.ack = ack;
-    Send(&msgAck, pid, TAG_ACK);
-}
-
 void SendReview(int company, float review)
 {
     MessageReview msgReview;
     msgReview.company = company;
     msgReview.review = review;
-    SendToAll(&msgReview, TAG_REVIEW);
+    SendToClients(&msgReview, TAG_REVIEW);
 }
 
 int Compare(int queuePos1, float rep1, int queuePos2, float rep2)
 {
-    if (queuePos1 < queuePos2 && rep1 > rep2)
+    if (queuePos1 < queuePos2 * 0.5 && rep1 > rep2 + 1)
     {
         return -1;
     }
-    // XXX
-    //return -1;
+    if (queuePos2 < queuePos1 * 0.5 && rep2 > rep1 + 1)
+    {
+        return 1;
+    }
     return 0;
-    //return 1;
 }
 
 void RunClient()
@@ -123,7 +124,7 @@ void RunClient()
             case WAITING:
             {
                 int32_t randNumber;
-                random_r(&randState, &randNumber);
+                random_r(randState, &randNumber);
                 if (randNumber < RAND_MAX * (1.0/SLEEPTIME))
                 {
                     state = NOQUEUE;
@@ -137,7 +138,7 @@ void RunClient()
             {
                 while(1)
                 {
-                    int company = ReceiveUpdate();
+                    int company = ReceiveUpdate(state);
                     if (queues[company] == Q_AVAILABLE)
                     {
                         SendRequest(company);
@@ -154,27 +155,42 @@ void RunClient()
             {
                 while(1)
                 {
-                    int company = ReceiveUpdate();
+                    int company = ReceiveUpdate(state);
                     int queueIndex = queues[company];
+                    float rep = reputations[company];
                     if (queueIndex == Q_AVAILABLE)
                     {
                         // check current queues
-                        SendRequest(company);
+                        int request = 1;
+                        for (int icompany = 0; icompany < nCompanies; icompany++)
+                        {
+                            int iqi = queues[icompany];
+                            float irep = reputations[icompany];
+                            if (Compare(2, rep, iqi, irep) == 1)
+                            {
+                                request = 0;
+                            }
+                        }
+                        if (request)
+                        {
+                            SendRequest(company);
+                        }
                     }
                     else if (queueIndex == Q_INPROGRESS)
                     {
                         state = INPROGRESS;
                         Log("murder in progress");
-                        //
-                        // XXX
-                        // TODO cancel other requests
-                        //
+                        for (int icompany = 0; icompany < nCompanies; icompany++)
+                        {
+                            if (icompany != company)
+                            {
+                                SendCancel(icompany);
+                            }
+                        }
                         break;
                     }
                     else if (queueIndex > 0)
                     {
-                        float rep = reputations[company];
-
                         for (int i = 0; i<nCompanies; i++)
                         {
                             int iqi = queues[i];
@@ -204,13 +220,13 @@ void RunClient()
             {
                 while(1)
                 {
-                    int company = ReceiveUpdate();
+                    int company = ReceiveUpdate(state);
                     if (queues[company] == Q_DONE)
                     {
                         Log("request fulfilled");
 
                         int32_t randNumber;
-                        random_r(&randState, &randNumber);
+                        random_r(randState, &randNumber);
                         float review = (5.0 * randNumber) / RAND_MAX;
                         Log("sending review of company %d; score = %f",
                             company, review);
