@@ -5,6 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <assert.h>
 #include <mpi.h>
 #include "messaging.h"
 
@@ -77,7 +78,7 @@ void Send(void* data, int dest, int tag)
     message->data.clk = localClock;
     if (data != NULL)
     {
-        memcpy(&(message->data), data, 16);
+        memcpy(&(message->data.data), data, 24);
     }
     Log("Sending to %d, tag = %d", dest, tag);
     MPI_Send(message, sizeof(Message), MPI_BYTE, dest, tag, MPI_COMM_WORLD);
@@ -103,8 +104,35 @@ void SendToCompanies(void* data, int tag)
 
 void SendToClients(void* data, int tag)
 {
-    for (int i = nCompanies; i < nProcesses; i++)
+    for (int i = nCompanies * 2; i < nProcesses; i++)
     {
         Send(data, i, tag);
+    }
+}
+
+void SendAck(int pid, int ack)
+{
+    MessageAck msgAck;
+    msgAck.ack = ack;
+    Send(&msgAck, pid, TAG_ACK);
+}
+
+int AwaitAck(int pid)
+{
+    Message msg;
+    int msgSender;
+    Receive(&msg, TAG_ACK, &msgSender);
+    MessageAck* msgAckP = (MessageAck*) &(msg.data.data);
+    int ack = msgAckP->ack;
+    assert(ack == ACK_OK || ack == ACK_REJECT);
+    if (msgSender == pid)
+    {
+        return ack;
+    }
+    else
+    {
+        Log("ERROR: received ACK from %d when expected from %d",
+            msgSender, pid);
+        exit(1);
     }
 }

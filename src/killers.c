@@ -7,6 +7,7 @@
 #include "messaging.h"
 #include "client.h"
 #include "company.h"
+#include "agent.h"
 
 int main(int argc, char **argv)
 {
@@ -16,7 +17,7 @@ int main(int argc, char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &processId);
     MPI_Comm_size(MPI_COMM_WORLD, &nProcesses);
 
-    nCompanies = 2;
+    nCompanies = 1;
     nKillers = 1;
     // TODO cmd line arguments
 
@@ -30,6 +31,10 @@ int main(int argc, char **argv)
     if (processId < nCompanies)
     {
         RunCompany();
+    }
+    else if (processId < nCompanies * 2)
+    {
+        RunAgent();
     }
     else
     {

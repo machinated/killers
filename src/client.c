@@ -3,6 +3,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <assert.h>
 #include <errno.h>
 #include "message.h"
 #include "messaging.h"
@@ -32,13 +33,6 @@ void SendCancel(int pid)
     Send(NULL, pid, TAG_CANCEL);
 }
 
-void SendAck(int pid, int ack)
-{
-    MessageAck msgAck;
-    msgAck.ack = ack;
-    Send(&msgAck, pid, TAG_ACK);
-}
-
 void HandleReview(MessageReview* msg)
 {
     reputations[msg->company] = reputations[msg->company] * 0.9 +
@@ -62,6 +56,8 @@ int ReceiveUpdate(State state)
         {
             MessageUpdate* msgUpdateP = (MessageUpdate*) &(msg.data.data);
             int queuePos = msgUpdateP->queueIndex;
+            Log("Received UPDATE from %d, position in queue = %d",
+                sender, queuePos);
             if (queuePos == Q_INPROGRESS)
             {
                 if (state == INPROGRESS)
@@ -107,14 +103,18 @@ int Compare(int queuePos1, float rep1, int queuePos2, float rep2)
 
 void RunClient()
 {
+    Log("Process %d running as client", processId);
     State state = WAITING;
 
     reputations = calloc(nCompanies, sizeof(float));
     queues = calloc(nCompanies, sizeof(int));
 
-    if (reputations == NULL || queues == NULL)
+    assert(reputations != NULL && queues != NULL);
+
+    for (int company = 0; company < nCompanies; company++)
     {
-        exit(1);
+        queues[company] = Q_AVAILABLE;
+        reputations[company] = 3.0;
     }
 
     while(1)
@@ -136,14 +136,15 @@ void RunClient()
             }
             case NOQUEUE:
             {
+                for (int company = 0; company < nCompanies; company++)
+                {
+                    SendRequest(company);
+                }
+                state = QUEUE;
                 while(1)
                 {
                     int company = ReceiveUpdate(state);
-                    if (queues[company] == Q_AVAILABLE)
-                    {
-                        SendRequest(company);
-                    }
-                    else if (queues[company] > 0)
+                    if (queues[company] >= 0)
                     {
                         state = QUEUE;
                         break;
@@ -232,6 +233,7 @@ void RunClient()
                             company, review);
                         SendReview(company, review);
                         state = WAITING;
+                        queues[company] = Q_AVAILABLE;
                         break;
                     }
                 }

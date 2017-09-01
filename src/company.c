@@ -2,6 +2,8 @@
 #define _BSD_SOURCE
 #include <stdlib.h>
 #include <time.h>
+#include <stdio.h>
+#include <string.h>
 #include <strings.h>
 #include <assert.h>
 #include <pthread.h>
@@ -9,108 +11,43 @@
 #include "messaging.h"
 #include "company.h"
 
-#define KILLTIME 4000
-
-int* queue;
+int* Queue;
 int queueLen;
-pthread_mutex_t queueMutex;
 
-typedef struct timespec Timespec;
+int* Jobs;
 
-Timespec* killers;
-
-void lockMutex(pthread_mutex_t* mutexP)
-{
-    int error = pthread_mutex_lock(mutexP);
-    if (error)
-    {
-        Log("Error locking mutex: %d", error);
-        exit(1);
-    }
-}
-
-void unlockMutex(pthread_mutex_t* mutexP)
-{
-    int error = pthread_mutex_unlock(mutexP);
-    if (error)
-    {
-        Log("Error unlocking mutex: %d", error);
-        exit(1);
-    }
-}
-
-int momentPassed(Timespec time)
-{
-    Timespec current;
-    if(clock_gettime(CLOCK_MONOTONIC, &current))
-    {
-        Log("Error getting current time");
-    }
-    if (time.tv_sec < current.tv_sec)
-    {
-        return 1;
-    }
-    else if (current.tv_sec < time.tv_sec)
-    {
-        return 0;
-    }
-    else
-    {
-        if (time.tv_nsec <= current.tv_nsec)
-        {
-            return 1;
-        }
-        else
-        {
-            return 0;
-        }
-    }
-}
-
-void AddTime(Timespec* timeP, unsigned long millis)
-{
-    timeP->tv_nsec += (millis - (millis/1000) * 1000) * 1000000;
-    if (timeP->tv_nsec > 1000000000)
-    {
-        timeP->tv_nsec -= 1000000000;
-        timeP->tv_sec += 1;
-    }
-    timeP->tv_sec += millis/1000;
-}
+int agent;
 
 void SendUpdate(int queuePos, int dest)
 {
     MessageUpdate msgUpdate;
     msgUpdate.queueIndex = queuePos;
+    Log("Sending UPDATE to %d, place in queue: %d", dest, queuePos);
     Send(&msgUpdate, dest, TAG_UPDATE);
 }
 
-int AwaitAck(int client)
+void PrintQueue()
 {
-    Message msg;
-    int msgSender;
-    Receive(&msg, TAG_ACK, &msgSender);
-    MessageAck* msgAckP = (MessageAck*) &(msg.data.data);
-    int ack = msgAckP->ack;
-    assert(ack == ACK_OK || ack == ACK_REJECT);
-    if (msgSender == client)
+    char* str = (char*) calloc(queueLen * 5, sizeof(char));
+    char elem[5];
+    for (int qi = 0; qi < queueLen; qi++)
     {
-        return ack;
+        sprintf(elem, "%d ", Queue[qi]);
+        strncat(str, elem, 5);
     }
-    else
-    {
-        Log("ERROR: received ACK from %d when expected from %d",
-            msgSender, client);
-        exit(1);
-    }
+    Log("QUEUE: %s", str);
+    free(str);
 }
 
 void QueueAdd(int client)
 {
     //lockMutex(&queueMutex);
-    queue[queueLen] = client;
-    SendUpdate(queue[queueLen], client);
+    Queue[queueLen] = client;
     queueLen++;
+    SendUpdate(queueLen - 1, client);
+    assert(queueLen <= nProcesses);
+    Log("Added %d to queue", client);
+    PrintQueue();
     //unlockMutex(&queueMutex);
 }
 
@@ -121,7 +58,7 @@ void QueueRemove(int client)
     int qi;
     for (qi = 0; qi < queueLen; qi++)
     {
-        if (queue[qi] == client)
+        if (Queue[qi] == client)
         {
             found = 1;
             break;
@@ -129,11 +66,14 @@ void QueueRemove(int client)
     }
     if (found)
     {
-        for( ; qi < queueLen; qi++)
+        for( ; qi < queueLen - 1; qi++)
         {
-            queue[qi] = queue[qi+1];
+            Queue[qi] = Queue[qi+1];
+            SendUpdate(qi, client);
         }
         queueLen--;
+        Log("Removed %d from queue", client);
+        PrintQueue();
     }
     else
     {
@@ -142,146 +82,111 @@ void QueueRemove(int client)
     //unlockMutex(&queueMutex);
 }
 
-void ReceiveRequest()
+int QueuePop()
 {
-    Message msg;
-    int client;
-
-    Receive(&msg, TAG_REQUEST, &client);
-    QueueAdd(client);
-}
-
-void ReceiveCancel()
-{
-    Message msg;
-    int client;
-
-    Receive(&msg, TAG_CANCEL, &client);
-    QueueRemove(client);
-}
-
-void* ListenRequest(void* param __attribute__((unused)))
-{
-    while(1)
+    if (queueLen < 1)
     {
-        ReceiveRequest();
+        Log("QueuePop: no elements");
+        return -1;
     }
-}
-
-void* ListenCancel(void* param __attribute__((unused)))
-{
-    while(1)
+    int first = Queue[0];
+    for (int qi = 0; qi < queueLen - 1; qi++)
     {
-        ReceiveCancel();
+        Queue[qi] = Queue[qi+1];
+        SendUpdate(qi, Queue[qi]);
     }
+    queueLen--;
+    Log("Popped %d from queue", first);
+    PrintQueue();
+    return first;
 }
 
-#define TIMESPEC_ZERO(t) (t.tv_sec == 0 && t.tv_nsec == 0)
-
-void SetKillerTimer(int killer)
+void NewJob(int killer)
 {
-    Timespec end;
-    int32_t randNumber;
-    random_r(randState, &randNumber);
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    AddTime(&end, randNumber % (KILLTIME * 2));
-    killers[killer] = end;
-}
-
-void NewJob(int ikiller)
-{
-    lockMutex(&queueMutex);
-    if (!TIMESPEC_ZERO(killers[ikiller]))   // there was a previous job
+    int oldClient = Jobs[killer];
+    if (oldClient != -1)   // there was a previous job
     {
-        assert(queueLen > 0);
-
-        int oldClient = queue[0];
         SendUpdate(Q_DONE, oldClient);
-
-        // shift queue left
-        // remove finished job from queue
-        queueLen--;
-        for (int i=0; i < queueLen; i++)
-        {
-            queue[i] = queue[i+1];
-            if (i != 0)
-            {
-                SendUpdate(i, queue[i]);
-            }
-        }
+        Jobs[killer] = -1;
     }
 
     if (queueLen > 0)   // there is a new job
     {
-        int qi;
-        for (qi = 0; qi < queueLen; qi++)   // find client
+        int client = QueuePop();
+        while (client != -1)
         {
-            int client = queue[qi];
             SendUpdate(Q_INPROGRESS, client);
             if (AwaitAck(client) == ACK_OK)
             {
                 break;
             }
-            else
-            {
-                QueueRemove(client);
-            }
+            client = QueuePop();
         }
-        if (qi < queueLen)  // found client
+        Jobs[killer] = client;
+        if (client == -1)
         {
-            // set finish time for new fob
-            SetKillerTimer(ikiller);
+            SendAck(agent, ACK_REJECT);
         }
         else
         {
-            killers[ikiller].tv_sec = 0;
-            killers[ikiller].tv_nsec = 0;
+            SendAck(agent, ACK_OK);
         }
     }
-    else                // no new job
+    else
     {
-        killers[ikiller].tv_sec = 0;
-        killers[ikiller].tv_nsec = 0;
+        SendAck(agent, ACK_REJECT);
     }
-    unlockMutex(&queueMutex);
+}
+
+void ReceiveMessages()
+{
+    Message msg;
+    int tag, sender;
+    ReceiveAll(&msg, &tag, &sender);
+
+    switch(tag)
+    {
+        case TAG_REQUEST:
+        {
+            QueueAdd(sender);
+            break;
+        }
+        case TAG_CANCEL:
+        {
+            QueueRemove(sender);
+            break;
+        }
+        case TAG_KILLER_READY:
+        {
+            MessageKillerReady* msgK = (MessageKillerReady*) &(msg.data.data);
+            int killer = msgK->killer;
+            Log("Received KILLER_READY from %d, killer: %d", sender, killer);
+            NewJob(killer);
+            break;
+        }
+        default:
+        {
+            Log("Received message with invalid tag: %d", tag);
+        }
+    }
 }
 
 void RunCompany()
 {
-    queue = (int*) calloc(nProcesses, sizeof(int));
+    Log("Process %d running as manager", processId);
+    Queue = (int*) calloc(nProcesses, sizeof(int));
     queueLen = 0;
-    pthread_mutex_init(&queueMutex, NULL);
-    killers = (Timespec*) calloc(nKillers, sizeof(Timespec));
-    int* inqueue = (int*) calloc(nProcesses, sizeof(int));
 
-    pthread_t requestListener, cancelListener;
-    pthread_create(&requestListener, NULL, &ListenRequest, NULL);
-    pthread_create(&cancelListener, NULL, &ListenCancel, NULL);
+    Jobs = (int*) calloc(nKillers, sizeof(int));
+    for (int job = 0; job < nKillers; job++)
+    {
+        Jobs[job] = -1;
+    }
+
+    agent = nCompanies + processId;
 
     while(1)
     {
-        bzero(inqueue, nProcesses);
-        lockMutex(&queueMutex);
-        for (int qi = 0; qi < queueLen; qi++)
-        {
-            inqueue[queue[qi]] = 1;
-        }
-        for (int client = nCompanies; client < nProcesses; client++)
-        {
-            if (inqueue[client] == 0)
-            {
-                SendUpdate(Q_AVAILABLE, client);
-            }
-        }
-        unlockMutex(&queueMutex);
-
-        for (int i = 0; i < nKillers; i++)
-        {
-            if (momentPassed(killers[i]))
-            {
-                NewJob(i);
-            }
-        }
-        milisleep(1);
+        ReceiveMessages();
     }
 }

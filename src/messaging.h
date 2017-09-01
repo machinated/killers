@@ -21,7 +21,7 @@ int nKillers;
 
 struct random_data* randState;
 
-#define Q_UNKNOWN 0
+//#define Q_UNKNOWN 0
 #define Q_AVAILABLE -3
 #define Q_INPROGRESS -1
 #define Q_DONE -2
@@ -37,5 +37,9 @@ void SendToAll(void* data, int tag);
 void SendToCompanies(void* data, int tag);
 
 void SendToClients(void* data, int tag);
+
+void SendAck(int pid, int ack);
+
+int AwaitAck(int pid);
 
 #endif

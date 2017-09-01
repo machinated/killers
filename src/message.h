@@ -8,8 +8,7 @@
 #define TAG_UPDATE 4
 #define TAG_CANCEL 5
 #define TAG_REVIEW 6
-
-//const char* tag_names[7] = {"0", "ACK", "2", "REQUEST", "UPDATE", "CANCEL", "REVIEW"};
+#define TAG_KILLER_READY 7
 
 #define ACK_OK 0
 #define ACK_REJECT 1
@@ -35,5 +34,9 @@ typedef struct MessageReview {
     int company;
     float review;
 } MessageReview;
+
+typedef struct MessageKillerReady {
+     int killer;
+} MessageKillerReady;
 
 #endif
