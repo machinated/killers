@@ -2,16 +2,11 @@
 #define _BSD_SOURCE
 #include <stdlib.h>
 #include <time.h>
+#include <pthread.h>
 #include <assert.h>
 #include "message.h"
 #include "messaging.h"
 #include "agent.h"
-
-//#define KILLTIME 4000
-
-Timespec* Killers;
-
-int parent;
 
 int momentPassed(Timespec time)
 {
@@ -41,86 +36,64 @@ int momentPassed(Timespec time)
     }
 }
 
-void AddTime(Timespec* timeP, unsigned long millis)
-{
-    timeP->tv_nsec += (millis - (millis/1000) * 1000) * 1000000;
-    if (timeP->tv_nsec > 1000000000)
-    {
-        timeP->tv_nsec -= 1000000000;
-        timeP->tv_sec += 1;
-    }
-    timeP->tv_sec += millis/1000;
-}
-
-void SetKillerTimer(int killer)
-{
-    Timespec timer;
-    if(clock_gettime(CLOCK_MONOTONIC, &timer))
-    {
-        Error("Error getting current time");
-    }
-
-    int millis = rand() % (KILLTIME * 2);
-
-    AddTime(&timer, millis);
-    Debug("Timer for killer %d set for %d ms", killer, millis);
-    Killers[killer] = timer;
-}
-
 void SendKillerReady(int killer)
 {
     MessageKillerReady msgK;
     msgK.killer = killer;
-    Debug("Sending KILLER_READY to %d, killer: %d", parent, killer);
-    Send(&msgK, parent, TAG_KILLER_READY);
+    Debug("Sending KILLER_READY to %d, killer: %d", processId, killer);
+    Send(&msgK, processId, TAG_KILLER_READY);
 }
 
-void OnKillerReady(int killer)
+// Timespec MinTimer(Timespec a, Timespec b)
+// {
+//     if (a.tv_sec < b.tv_sec)
+//     {
+//         return a;
+//     }
+//     if (b.tv_sec < a.tv_sec)
+//     {
+//         return b;
+//     }
+//     if (a.tv_nsec < b.tv_nsec)
+//     {
+//         return a;
+//     }
+//     if (b.tv_nsec < a.tv_nsec)
+//     {
+//         return b;
+//     }
+//     return a;
+// }
+//
+// Timespec GetSleepTime()
+// {
+//     Timespec minTimer;
+//     pthread_mutex_lock(&killersMutex);
+//     for (int killer = 0; killer < nKillers; killer++)
+//     {
+//         if (Killers[killer].client != -1)
+//         {
+//             minTimer = MinTimer(minTimer, Killers[killer].timer);
+//         }
+//     }
+//     pthread_mutex_unlock(&killersMutex);
+// }
+
+void* RunAgent(void* arg)
 {
-    SendKillerReady(killer);
-    if (AwaitAck(parent) == ACK_OK)
-    {
-        SetKillerTimer(killer);
-    }
-    else                // ACK_REJECT
-    {
-        // killers[killer].tv_sec = 0;
-        // killers[killer].tv_nsec = 0;
-
-        Killers[killer].tv_sec += 1;
-    }
-}
-
-void RunAgent()
-{
-    parent = processId - nCompanies;
-    Debug("Process %d running as agent for %d", processId, parent);
-    // while(1)
-    // {
-    //     milisleep(1);
-    // }
-    Killers = (Timespec*) calloc(nKillers, sizeof(Timespec));
-
-    for (int killer = 0; killer < nKillers; killer++)
-    {
-        Timespec current;
-        if(clock_gettime(CLOCK_MONOTONIC, &current))
-        {
-            Error("Error getting current time");
-        }
-        Killers[killer] = current;
-    }
-
     while(1)
     {
+        pthread_mutex_lock(&killersMutex);
         for (int killer = 0; killer < nKillers; killer++)
         {
-            if (momentPassed(Killers[killer]))
+            if (Killers[killer].client != -1 &&
+                momentPassed(Killers[killer].timer))
             {
                 Debug("Killer %d is ready", killer);
-                OnKillerReady(killer);
+                SendKillerReady(killer);
             }
         }
-        milisleep(1);
+        pthread_mutex_unlock(&killersMutex);
+        milisleep(10);
     }
 }

@@ -27,7 +27,7 @@ void milisleep(long ms)
 void _Log(const char* format, va_list args)
 {
     const char* preFormat = "PROCESS %*d CLK %*d:";
-    char* string = calloc(150, sizeof(char));
+    char* string = (char*) calloc(150, sizeof(char));
     sprintf(string, preFormat, 3, processId, 6, localClock);
 
     strncat(string, format, 100);   // append format to string
@@ -155,7 +155,7 @@ void SendToCompanies(void* data, int tag)
 
 void SendToClients(void* data, int tag)
 {
-    for (int i = nCompanies * 2; i < nProcesses; i++)
+    for (int i = nCompanies; i < nProcesses; i++)
     {
         Send(data, i, tag);
     }

@@ -3,6 +3,7 @@
 #define _BSD_SOURCE
 #include <stdlib.h>
 #include <stdint.h>
+#include <pthread.h>
 #include "message.h"
 
 typedef struct timespec Timespec;
@@ -38,6 +39,14 @@ int nKillers;
 int SLEEPTIME;
 
 int KILLTIME;
+
+typedef struct Killer {
+    int client;
+    Timespec timer;
+} Killer;
+
+Killer* Killers;
+pthread_mutex_t killersMutex;
 
 //#define Q_UNKNOWN 0
 #define Q_AVAILABLE -3

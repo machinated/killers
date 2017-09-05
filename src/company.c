@@ -10,14 +10,13 @@
 #include <mpi.h>
 #include "message.h"
 #include "messaging.h"
+#include "agent.h"
 #include "company.h"
 
-int* Queue;
+int* Queue;     // client[queuePos]
 int queueLen;
 
-int* Jobs;
-
-int agent;
+pthread_t agentThread;
 
 void SendUpdate(int queuePos, int dest)
 {
@@ -112,13 +111,40 @@ int QueuePop()
     return first;
 }
 
+void AddTime(Timespec* timeP, unsigned long millis)
+{
+    timeP->tv_nsec += (millis - (millis/1000) * 1000) * 1000000;
+    if (timeP->tv_nsec > 1000000000)
+    {
+        timeP->tv_nsec -= 1000000000;
+        timeP->tv_sec += 1;
+    }
+    timeP->tv_sec += millis/1000;
+}
+
+void SetKillerTimer(int killer)
+{
+    Timespec timer;
+    if(clock_gettime(CLOCK_MONOTONIC, &timer))
+    {
+        Error("Error getting current time");
+    }
+
+    int millis = rand() % (KILLTIME * 2);
+
+    AddTime(&timer, millis);
+    Debug("Timer for killer %d set for %d ms", killer, millis);
+    Killers[killer].timer = timer;
+}
+
 void NewJob(int killer)
 {
-    int oldClient = Jobs[killer];
+    pthread_mutex_lock(&killersMutex);
+    int oldClient = Killers[killer].client;
     if (oldClient != -1)   // there was a previous job
     {
         SendUpdate(Q_DONE, oldClient);
-        Jobs[killer] = -1;
+        Killers[killer].client = -1;
     }
 
     if (queueLen > 0)   // there is a new job
@@ -133,20 +159,33 @@ void NewJob(int killer)
             }
             client = QueuePop();
         }
-        Jobs[killer] = client;
-        if (client == -1)
+        Killers[killer].client = client;
+        if (client != -1)
         {
-            SendAck(agent, ACK_REJECT);
-        }
-        else
-        {
-            SendAck(agent, ACK_OK);
+            SetKillerTimer(killer);
         }
     }
     else
     {
-        SendAck(agent, ACK_REJECT);
+        Killers[killer].client = -1;
     }
+    pthread_mutex_unlock(&killersMutex);
+}
+
+int GetFreeKiller()
+{
+    pthread_mutex_lock(&killersMutex);
+    int killer = -1;
+    for (int ik = 0; ik < nKillers; ik++)
+    {
+        if (Killers[ik].client == -1)
+        {
+            killer = ik;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&killersMutex);
+    return killer;
 }
 
 void ReceiveMessages()
@@ -160,6 +199,14 @@ void ReceiveMessages()
         case TAG_REQUEST:
         {
             QueueAdd(sender);
+            if (queueLen == 1)
+            {
+                int killer = GetFreeKiller();
+                if (killer != -1)
+                {
+                    NewJob(killer);
+                }
+            }
             break;
         }
         case TAG_CANCEL:
@@ -188,18 +235,19 @@ void RunCompany()
     Queue = (int*) calloc(nProcesses, sizeof(int));
     queueLen = 0;
 
-    Jobs = (int*) calloc(nKillers, sizeof(int));
+    Killers = (Killer*) calloc(nKillers, sizeof(Killer));
 
-    if(Queue == NULL || Jobs == NULL)
+    if(Queue == NULL || Killers == NULL)
     {
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
-    for (int job = 0; job < nKillers; job++)
+    for (int ik = 0; ik < nKillers; ik++)
     {
-        Jobs[job] = -1;
+        Killers[ik].client = -1;
     }
 
-    agent = nCompanies + processId;
+    pthread_mutex_init(&killersMutex, NULL);
+    pthread_create(&agentThread, NULL, &RunAgent, NULL);
 
     while(1)
     {

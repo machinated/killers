@@ -24,7 +24,7 @@ typedef union Message {
 
 typedef struct MessageUpdate {
     int queueIndex;
-    int queueLen;
+    int queueLen;   // XXX NYI
 } MessageUpdate;
 
 typedef struct MessageAck {

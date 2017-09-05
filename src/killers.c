@@ -116,10 +116,6 @@ int main(int argc, char* argv[])
     {
         RunCompany();
     }
-    else if (processId < nCompanies * 2)
-    {
-        RunAgent();
-    }
     else
     {
         RunClient();
