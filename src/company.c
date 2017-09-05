@@ -135,6 +135,7 @@ void SetKillerTimer(int killer)
     AddTime(&timer, millis);
     Debug("Timer for killer %d set for %d ms", killer, millis);
     Killers[killer].timer = timer;
+    pthread_cond_signal(&jobAdded);
 }
 
 void NewJob(int killer)

@@ -44,46 +44,49 @@ void SendKillerReady(int killer)
     Send(&msgK, processId, TAG_KILLER_READY);
 }
 
-// Timespec MinTimer(Timespec a, Timespec b)
-// {
-//     if (a.tv_sec < b.tv_sec)
-//     {
-//         return a;
-//     }
-//     if (b.tv_sec < a.tv_sec)
-//     {
-//         return b;
-//     }
-//     if (a.tv_nsec < b.tv_nsec)
-//     {
-//         return a;
-//     }
-//     if (b.tv_nsec < a.tv_nsec)
-//     {
-//         return b;
-//     }
-//     return a;
-// }
-//
-// Timespec GetSleepTime()
-// {
-//     Timespec minTimer;
-//     pthread_mutex_lock(&killersMutex);
-//     for (int killer = 0; killer < nKillers; killer++)
-//     {
-//         if (Killers[killer].client != -1)
-//         {
-//             minTimer = MinTimer(minTimer, Killers[killer].timer);
-//         }
-//     }
-//     pthread_mutex_unlock(&killersMutex);
-// }
+Timespec MinTimer(Timespec a, Timespec b)
+{
+    if (a.tv_sec < b.tv_sec)
+    {
+        return a;
+    }
+    if (b.tv_sec < a.tv_sec)
+    {
+        return b;
+    }
+    if (a.tv_nsec < b.tv_nsec)
+    {
+        return a;
+    }
+    if (b.tv_nsec < a.tv_nsec)
+    {
+        return b;
+    }
+    return a;
+}
+
+Timespec GetSleepTime()
+{
+    Timespec minTimer;
+    for (int killer = 0; killer < nKillers; killer++)
+    {
+        if (Killers[killer].client != -1)
+        {
+            minTimer = MinTimer(minTimer, Killers[killer].timer);
+        }
+    }
+    return minTimer;
+}
 
 void* RunAgent(void* arg)
 {
     while(1)
     {
         pthread_mutex_lock(&killersMutex);
+        Timespec sleepTime = GetSleepTime();
+        pthread_cond_timedwait(&jobAdded, &killersMutex, &sleepTime);
+        // killersMutex locked
+
         for (int killer = 0; killer < nKillers; killer++)
         {
             if (Killers[killer].client != -1 &&
@@ -94,6 +97,5 @@ void* RunAgent(void* arg)
             }
         }
         pthread_mutex_unlock(&killersMutex);
-        milisleep(10);
     }
 }

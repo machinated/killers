@@ -26,6 +26,7 @@ int* queues;
 
 void SendRequest(int pid)
 {
+    assert(queues[pid] == Q_AVAILABLE);
     Send(NULL, pid, TAG_REQUEST);
 }
 
@@ -33,7 +34,7 @@ void SendCancel(int pid)
 {
     assert(queues[pid] >= 0);
     Send(NULL, pid, TAG_CANCEL);
-    queues[pid] = Q_AVAILABLE;
+    queues[pid] = Q_REJECTED;
 }
 
 void HandleReview(MessageReview* msg)
@@ -59,6 +60,12 @@ int ReceiveUpdate(State state)
         {
             MessageUpdate* msgUpdateP = (MessageUpdate*) &(msg.data.data);
             int queuePos = msgUpdateP->queueIndex;
+            if (queues[sender] == Q_REJECTED)
+            {
+                Debug("Ignored UPDATE from %d, position in queue = %d",
+                    sender, queuePos);
+                continue;
+            }
             Debug("Received UPDATE from %d, position in queue = %d",
                 sender, queuePos);
             if (queuePos == Q_INPROGRESS)
@@ -66,7 +73,7 @@ int ReceiveUpdate(State state)
                 if (state == INPROGRESS)
                 {
                     SendAck(sender, ACK_REJECT);
-                    queues[sender] = Q_AVAILABLE;   // XXX ?
+                    queues[sender] = Q_REJECTED;
                     return sender;
                 }
                 else
@@ -110,8 +117,8 @@ void RunClient()
     Debug("Process %d running as client", processId);
     State state = WAITING;
 
-    reputations = calloc(nCompanies, sizeof(float));
-    queues = calloc(nCompanies, sizeof(int));
+    reputations = (float*) calloc(nCompanies, sizeof(float));
+    queues = (int*) calloc(nCompanies, sizeof(int));
 
     Timespec queueTimer;
     Timespec requestTimer;
@@ -144,6 +151,13 @@ void RunClient()
             {
                 for (int company = 0; company < nCompanies; company++)
                 {
+                    #ifdef DEBUG
+                    if (queues[company] != Q_AVAILABLE)
+                    {
+                        Error("ERROR: unexpected place in queue %d for company %d",
+                              queues[company], company);
+                    }
+                    #endif
                     SendRequest(company);
                 }
                 state = QUEUE;
@@ -167,21 +181,24 @@ void RunClient()
                     float rep = reputations[company];
                     if (queueIndex == Q_AVAILABLE)
                     {
+                        Error("Unexpected queue status Q_AVAILABLE from company %d",
+                              company);
                         // check current queues
-                        int request = 1;
-                        for (int icompany = 0; icompany < nCompanies; icompany++)
-                        {
-                            int iqi = queues[icompany];
-                            float irep = reputations[icompany];
-                            if (Compare(2, rep, iqi, irep) == 1)
-                            {
-                                request = 0;
-                            }
-                        }
-                        if (request)
-                        {
-                            SendRequest(company);
-                        }
+                        // int request = 1;
+                        // for (int icompany = 0; icompany < nCompanies; icompany++)
+                        // {
+                        //     int iqi = queues[icompany];
+                        //     float irep = reputations[icompany];
+                        //     if (Compare(2, rep, iqi, irep) == 1)
+                        //     {
+                        //         request = 0;
+                        //         break;
+                        //     }
+                        // }
+                        // if (request)
+                        // {
+                        //     SendRequest(company);
+                        // }
                     }
                     else if (queueIndex == Q_INPROGRESS)
                     {
@@ -191,7 +208,7 @@ void RunClient()
                         startTimer(&requestTimer);
                         for (int icompany = 0; icompany < nCompanies; icompany++)
                         {
-                            if (icompany != company && queues[icompany] != Q_AVAILABLE)
+                            if (icompany != company && queues[icompany] >= 0)
                             {
                                 SendCancel(icompany);
                             }
@@ -203,7 +220,7 @@ void RunClient()
                         for (int i = 0; i<nCompanies; i++)
                         {
                             int iqi = queues[i];
-                            if (iqi == Q_AVAILABLE)
+                            if (iqi == Q_REJECTED)
                             {
                                 continue;
                             }
@@ -250,7 +267,10 @@ void RunClient()
                             company, review);
                         SendReview(company, review);
                         state = WAITING;
-                        queues[company] = Q_AVAILABLE;
+                        for (int company = 0; company < nCompanies; company++)
+                        {
+                            queues[company] = Q_AVAILABLE;
+                        }
                         break;
                     }
                 }

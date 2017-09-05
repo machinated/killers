@@ -47,8 +47,9 @@ typedef struct Killer {
 
 Killer* Killers;
 pthread_mutex_t killersMutex;
+pthread_cond_t jobAdded;
 
-//#define Q_UNKNOWN 0
+#define Q_REJECTED -4
 #define Q_AVAILABLE -3
 #define Q_INPROGRESS -1
 #define Q_DONE -2
