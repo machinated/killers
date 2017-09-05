@@ -7,9 +7,10 @@
 #include <errno.h>
 #include "message.h"
 #include "messaging.h"
+#include "timer.h"
 #include "client.h"
 
-#define SLEEPTIME 3000  // ms
+//#define SLEEPTIME 3000  // ms
 
 typedef enum State
 {
@@ -30,7 +31,9 @@ void SendRequest(int pid)
 
 void SendCancel(int pid)
 {
+    assert(queues[pid] >= 0);
     Send(NULL, pid, TAG_CANCEL);
+    queues[pid] = Q_AVAILABLE;
 }
 
 void HandleReview(MessageReview* msg)
@@ -56,13 +59,14 @@ int ReceiveUpdate(State state)
         {
             MessageUpdate* msgUpdateP = (MessageUpdate*) &(msg.data.data);
             int queuePos = msgUpdateP->queueIndex;
-            Log("Received UPDATE from %d, position in queue = %d",
+            Debug("Received UPDATE from %d, position in queue = %d",
                 sender, queuePos);
             if (queuePos == Q_INPROGRESS)
             {
                 if (state == INPROGRESS)
                 {
                     SendAck(sender, ACK_REJECT);
+                    queues[sender] = Q_AVAILABLE;   // XXX ?
                     return sender;
                 }
                 else
@@ -75,7 +79,7 @@ int ReceiveUpdate(State state)
         }
         else
         {
-            Log("ERROR: received message with invalid tag: %d", tag);
+            Debug("ERROR: received message with invalid tag: %d", tag);
         }
     }
 }
@@ -103,11 +107,14 @@ int Compare(int queuePos1, float rep1, int queuePos2, float rep2)
 
 void RunClient()
 {
-    Log("Process %d running as client", processId);
+    Debug("Process %d running as client", processId);
     State state = WAITING;
 
     reputations = calloc(nCompanies, sizeof(float));
     queues = calloc(nCompanies, sizeof(int));
+
+    Timespec queueTimer;
+    Timespec requestTimer;
 
     assert(reputations != NULL && queues != NULL);
 
@@ -123,13 +130,12 @@ void RunClient()
         {
             case WAITING:
             {
-                int32_t randNumber;
-                random_r(randState, &randNumber);
-                if (randNumber < RAND_MAX * (1.0/SLEEPTIME))
+                if (rand() < RAND_MAX * (1.0/SLEEPTIME))
                 {
                     state = NOQUEUE;
                     localClock++;
-                    Log("looking for killer");
+                    startTimer(&queueTimer);
+                    Info("looking for killer");
                 }
                 milisleep(1);
                 break;
@@ -180,31 +186,43 @@ void RunClient()
                     else if (queueIndex == Q_INPROGRESS)
                     {
                         state = INPROGRESS;
-                        Log("murder in progress");
+                        Info("Request accepted by company %d after %d ms",
+                             company, elapsedMillis(&queueTimer));
+                        startTimer(&requestTimer);
                         for (int icompany = 0; icompany < nCompanies; icompany++)
                         {
-                            if (icompany != company)
+                            if (icompany != company && queues[icompany] != Q_AVAILABLE)
                             {
                                 SendCancel(icompany);
                             }
                         }
                         break;
                     }
-                    else if (queueIndex > 0)
+                    else if (queueIndex >= 0)
                     {
                         for (int i = 0; i<nCompanies; i++)
                         {
                             int iqi = queues[i];
+                            if (iqi == Q_AVAILABLE)
+                            {
+                                continue;
+                            }
                             float irep = reputations[i];
-                            if (iqi > 0)
+                            if (iqi >= 0)
                             {
                                 int res = Compare(queueIndex, rep, iqi, irep);
                                 if (res == -1)
                                 {
+                                    Debug("Leaving queue for %d (rep %f) "
+                                          "in favor of %d (rep %f)",
+                                          i, irep, company, rep);
                                     SendCancel(i);
                                 }
                                 else if (res == 1)
                                 {
+                                    Debug("Leaving queue to %d (rep %f) "
+                                          "in favor of %d (rep %f)",
+                                          company, rep, i, irep);
                                     SendCancel(company);
                                 }
                             }
@@ -212,7 +230,7 @@ void RunClient()
                     }
                     else
                     {
-                        Log("ERROR: invalid queue index: %d", queueIndex);
+                        Debug("ERROR: invalid queue index: %d", queueIndex);
                     }
                 }
                 break;
@@ -224,12 +242,11 @@ void RunClient()
                     int company = ReceiveUpdate(state);
                     if (queues[company] == Q_DONE)
                     {
-                        Log("request fulfilled");
+                        Info("Request fulfilled in %d ms",
+                             elapsedMillis(&requestTimer));
 
-                        int32_t randNumber;
-                        random_r(randState, &randNumber);
-                        float review = (5.0 * randNumber) / RAND_MAX;
-                        Log("sending review of company %d; score = %f",
+                        float review = (5.0 * rand()) / RAND_MAX;
+                        Debug("sending review of company %d; score = %f",
                             company, review);
                         SendReview(company, review);
                         state = WAITING;

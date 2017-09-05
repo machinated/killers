@@ -9,6 +9,9 @@
 #include <mpi.h>
 #include "messaging.h"
 
+const char* tag_names[20] = {"0", "ACK", "2", "REQUEST", "UPDATE", "CANCEL",
+                            "REVIEW", "KILLER_READY"};
+
 void milisleep(long ms)
 {
     struct timespec sleepTime;
@@ -17,27 +20,67 @@ void milisleep(long ms)
     if (nanosleep(&sleepTime, NULL) != 0)
     {
         printf("Nanosleep error: %d\n", errno);
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
     }
 }
 
-void Log(const char* format, ...)
+void _Log(const char* format, va_list args)
 {
     const char* preFormat = "PROCESS %*d CLK %*d:";
-    char* string = calloc(150, 1);
+    char* string = calloc(150, sizeof(char));
     sprintf(string, preFormat, 3, processId, 6, localClock);
 
     strncat(string, format, 100);   // append format to string
     const char* nl = "\n";
     strcat(string, nl);
 
-    va_list argList;
-    va_start(argList, format);
-
-    vprintf(string, argList);
-    va_end(argList);
+    vprintf(string, args);
 
     free(string);
+}
+
+void Log(int priority, const char* format, ...)
+{
+    if (priority >= logPriority)
+    {
+        va_list argList;
+        va_start(argList, format);
+        _Log(format, argList);
+        va_end(argList);
+    }
+}
+
+void Debug(const char* format, ...)
+{
+    if (LOG_DEBUG >= logPriority)
+    {
+        va_list argList;
+        va_start(argList, format);
+        _Log(format, argList);
+        va_end(argList);
+    }
+}
+
+void Info(const char* format, ...)
+{
+    if (LOG_INFO >= logPriority)
+    {
+        va_list argList;
+        va_start(argList, format);
+        _Log(format, argList);
+        va_end(argList);
+    }
+}
+
+void Error(const char* format, ...)
+{
+    if (LOG_ERROR >= logPriority)
+    {
+        va_list argList;
+        va_start(argList, format);
+        _Log(format, argList);
+        va_end(argList);
+    }
 }
 
 void UpdateClock(uint64_t msgClk)
@@ -53,6 +96,9 @@ void Receive(Message* msgP, int tag, int* sender)
     MPI_Status stat;
     MPI_Recv(msgP, sizeof(Message), MPI_BYTE, MPI_ANY_SOURCE, tag,
             MPI_COMM_WORLD, &stat);
+    assert(tag == stat.MPI_TAG);
+    Debug("Received from %d, tag %s, message clock = %d",
+        stat.MPI_SOURCE, tag_names[tag], msgP->data.clk);
     UpdateClock(msgP->data.clk);
     localClock++;
     *sender = stat.MPI_SOURCE;
@@ -63,8 +109,8 @@ void ReceiveAll(Message* msgP, int* tag, int* sender)
     MPI_Status stat;
     MPI_Recv(msgP, sizeof(Message), MPI_BYTE, MPI_ANY_SOURCE, MPI_ANY_TAG,
             MPI_COMM_WORLD, &stat);
-    Log("Received from %d, tag = %d, message clock = %d",
-        stat.MPI_SOURCE, stat.MPI_TAG, msgP->data.clk);
+    Debug("Received from %d, tag %s, message clock = %d",
+        stat.MPI_SOURCE, tag_names[stat.MPI_TAG], msgP->data.clk);
     UpdateClock(msgP->data.clk);
     localClock++;
     *tag = stat.MPI_TAG;
@@ -73,16 +119,21 @@ void ReceiveAll(Message* msgP, int* tag, int* sender)
 
 void Send(void* data, int dest, int tag)
 {
-    Message *message = malloc(sizeof(Message));
+    Message msg;
+    // Message* message = malloc(sizeof(Message));
+    // if (message == NULL)
+    // {
+    //     Error("malloc error");
+    // }
     //message->pid = processId;
-    message->data.clk = localClock;
+    msg.data.clk = localClock;
     if (data != NULL)
     {
-        memcpy(&(message->data.data), data, 24);
+        memcpy(&(msg.data.data), data, 24);
     }
-    Log("Sending to %d, tag = %d", dest, tag);
-    MPI_Send(message, sizeof(Message), MPI_BYTE, dest, tag, MPI_COMM_WORLD);
-    free(message);
+    Debug("Sending to %d, tag %s", dest, tag_names[tag]);
+    MPI_Send(&msg, sizeof(Message), MPI_BYTE, dest, tag, MPI_COMM_WORLD);
+    // free(message);
     localClock++;
 }
 
@@ -114,6 +165,7 @@ void SendAck(int pid, int ack)
 {
     MessageAck msgAck;
     msgAck.ack = ack;
+    Debug("Sending ACK to %d, status %d", pid, ack);
     Send(&msgAck, pid, TAG_ACK);
 }
 
@@ -127,12 +179,14 @@ int AwaitAck(int pid)
     assert(ack == ACK_OK || ack == ACK_REJECT);
     if (msgSender == pid)
     {
+        Debug("Received ACK from %d, status %d", pid, ack);
         return ack;
     }
     else
     {
-        Log("ERROR: received ACK from %d when expected from %d",
+        Error("ERROR: received ACK from %d when expected from %d",
             msgSender, pid);
-        exit(1);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return 1;
     }
 }

@@ -7,6 +7,7 @@
 #include <strings.h>
 #include <assert.h>
 #include <pthread.h>
+#include <mpi.h>
 #include "message.h"
 #include "messaging.h"
 #include "company.h"
@@ -22,7 +23,7 @@ void SendUpdate(int queuePos, int dest)
 {
     MessageUpdate msgUpdate;
     msgUpdate.queueIndex = queuePos;
-    Log("Sending UPDATE to %d, place in queue: %d", dest, queuePos);
+    Debug("Sending UPDATE to %d, place in queue: %d", dest, queuePos);
     Send(&msgUpdate, dest, TAG_UPDATE);
 }
 
@@ -35,25 +36,36 @@ void PrintQueue()
         sprintf(elem, "%d ", Queue[qi]);
         strncat(str, elem, 5);
     }
-    Log("QUEUE: %s", str);
+    Debug("QUEUE: %s", str);
     free(str);
+}
+
+int QueueContains(int client)
+{
+    for (int i = 0; i < queueLen; i++)
+    {
+        if (Queue[i] == client)
+        {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 void QueueAdd(int client)
 {
-    //lockMutex(&queueMutex);
+    assert(!QueueContains(client));
     Queue[queueLen] = client;
     queueLen++;
+    assert(queueLen <= nProcesses);
     SendUpdate(queueLen - 1, client);
     assert(queueLen <= nProcesses);
-    Log("Added %d to queue", client);
+    Debug("Added %d to queue", client);
     PrintQueue();
-    //unlockMutex(&queueMutex);
 }
 
 void QueueRemove(int client)
 {
-    //lockMutex(&queueMutex);
     int found = 0;
     int qi;
     for (qi = 0; qi < queueLen; qi++)
@@ -72,21 +84,20 @@ void QueueRemove(int client)
             SendUpdate(qi, client);
         }
         queueLen--;
-        Log("Removed %d from queue", client);
+        Debug("Removed %d from queue", client);
         PrintQueue();
     }
     else
     {
-        Log("Attempting to remove %d, but not in queue", client);
+        Error("Attempting to remove %d, but not in queue", client);
     }
-    //unlockMutex(&queueMutex);
 }
 
 int QueuePop()
 {
     if (queueLen < 1)
     {
-        Log("QueuePop: no elements");
+        Debug("QueuePop: no elements");
         return -1;
     }
     int first = Queue[0];
@@ -96,7 +107,7 @@ int QueuePop()
         SendUpdate(qi, Queue[qi]);
     }
     queueLen--;
-    Log("Popped %d from queue", first);
+    Debug("Popped %d from queue", first);
     PrintQueue();
     return first;
 }
@@ -160,24 +171,29 @@ void ReceiveMessages()
         {
             MessageKillerReady* msgK = (MessageKillerReady*) &(msg.data.data);
             int killer = msgK->killer;
-            Log("Received KILLER_READY from %d, killer: %d", sender, killer);
+            Debug("Received KILLER_READY from %d, killer: %d", sender, killer);
             NewJob(killer);
             break;
         }
         default:
         {
-            Log("Received message with invalid tag: %d", tag);
+            Debug("Received message with invalid tag: %d", tag);
         }
     }
 }
 
 void RunCompany()
 {
-    Log("Process %d running as manager", processId);
+    Debug("Process %d running as manager", processId);
     Queue = (int*) calloc(nProcesses, sizeof(int));
     queueLen = 0;
 
     Jobs = (int*) calloc(nKillers, sizeof(int));
+
+    if(Queue == NULL || Jobs == NULL)
+    {
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
     for (int job = 0; job < nKillers; job++)
     {
         Jobs[job] = -1;

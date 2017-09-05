@@ -5,9 +5,25 @@
 #include <stdint.h>
 #include "message.h"
 
+typedef struct timespec Timespec;
+
 void milisleep(long ms);
 
-void Log(const char* format, ...);
+void Log(int priority, const char* format, ...);
+
+void Debug(const char* format, ...);
+
+void Info(const char* format, ...);
+
+void Error(const char* format, ...);
+
+int logPriority;
+
+#define LOG_TRACE 0
+#define LOG_DEBUG 1
+#define LOG_INFO 2
+#define LOG_WARNING 3
+#define LOG_ERROR 4
 
 uint64_t localClock;
 
@@ -19,7 +35,9 @@ int nCompanies;
 
 int nKillers;
 
-struct random_data* randState;
+int SLEEPTIME;
+
+int KILLTIME;
 
 //#define Q_UNKNOWN 0
 #define Q_AVAILABLE -3

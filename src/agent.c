@@ -7,9 +7,8 @@
 #include "messaging.h"
 #include "agent.h"
 
-#define KILLTIME 4000
+//#define KILLTIME 4000
 
-typedef struct timespec Timespec;
 Timespec* Killers;
 
 int parent;
@@ -19,7 +18,7 @@ int momentPassed(Timespec time)
     Timespec current;
     if(clock_gettime(CLOCK_MONOTONIC, &current))
     {
-        Log("Error getting current time");
+        Error("Error getting current time");
     }
     if (time.tv_sec < current.tv_sec)
     {
@@ -58,15 +57,13 @@ void SetKillerTimer(int killer)
     Timespec timer;
     if(clock_gettime(CLOCK_MONOTONIC, &timer))
     {
-        Log("Error getting current time");
+        Error("Error getting current time");
     }
 
-    int32_t randNumber;
-    random_r(randState, &randNumber);
-    int millis = randNumber % (KILLTIME * 2);
+    int millis = rand() % (KILLTIME * 2);
 
     AddTime(&timer, millis);
-    Log("Timer for killer %d set for %d ms", killer, millis);
+    Debug("Timer for killer %d set for %d ms", killer, millis);
     Killers[killer] = timer;
 }
 
@@ -74,7 +71,7 @@ void SendKillerReady(int killer)
 {
     MessageKillerReady msgK;
     msgK.killer = killer;
-    Log("Sending KILLER_READY to %d, killer: %d", parent, killer);
+    Debug("Sending KILLER_READY to %d, killer: %d", parent, killer);
     Send(&msgK, parent, TAG_KILLER_READY);
 }
 
@@ -90,7 +87,6 @@ void OnKillerReady(int killer)
         // killers[killer].tv_sec = 0;
         // killers[killer].tv_nsec = 0;
 
-        Log("Killer %d rejected", killer);
         Killers[killer].tv_sec += 1;
     }
 }
@@ -98,7 +94,11 @@ void OnKillerReady(int killer)
 void RunAgent()
 {
     parent = processId - nCompanies;
-    Log("Process %d running as agent for %d", processId, parent);
+    Debug("Process %d running as agent for %d", processId, parent);
+    // while(1)
+    // {
+    //     milisleep(1);
+    // }
     Killers = (Timespec*) calloc(nKillers, sizeof(Timespec));
 
     for (int killer = 0; killer < nKillers; killer++)
@@ -106,7 +106,7 @@ void RunAgent()
         Timespec current;
         if(clock_gettime(CLOCK_MONOTONIC, &current))
         {
-            Log("Error getting current time");
+            Error("Error getting current time");
         }
         Killers[killer] = current;
     }
@@ -117,7 +117,7 @@ void RunAgent()
         {
             if (momentPassed(Killers[killer]))
             {
-                Log("Killer %d is ready", killer);
+                Debug("Killer %d is ready", killer);
                 OnKillerReady(killer);
             }
         }
