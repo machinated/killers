@@ -4,7 +4,7 @@
 
 void startTimer(Timespec* timer)
 {
-    if(clock_gettime(CLOCK_MONOTONIC, timer))
+    if(clock_gettime(CLOCK_REALTIME, timer))
     {
         Error("Error getting current time");
     }
@@ -13,7 +13,7 @@ void startTimer(Timespec* timer)
 unsigned long elapsedMillis(Timespec* timer)
 {
     Timespec current;
-    if(clock_gettime(CLOCK_MONOTONIC, &current))
+    if(clock_gettime(CLOCK_REALTIME, &current))
     {
         Error("Error getting current time");
     }

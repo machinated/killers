@@ -2,6 +2,7 @@
 #define _BSD_SOURCE
 #include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include <pthread.h>
 #include <assert.h>
 #include "message.h"
@@ -11,7 +12,7 @@
 int momentPassed(Timespec time)
 {
     Timespec current;
-    if(clock_gettime(CLOCK_MONOTONIC, &current))
+    if(clock_gettime(CLOCK_REALTIME, &current))
     {
         Error("Error getting current time");
     }
@@ -70,7 +71,7 @@ Timespec GetSleepTime()
     Timespec minTimer;
     for (int killer = 0; killer < nKillers; killer++)
     {
-        if (Killers[killer].client != -1)
+        if (Killers[killer].status == K_BUSY)
         {
             minTimer = MinTimer(minTimer, Killers[killer].timer);
         }
@@ -89,11 +90,13 @@ void* RunAgent(void* arg)
 
         for (int killer = 0; killer < nKillers; killer++)
         {
-            if (Killers[killer].client != -1 &&
+            if (Killers[killer].status == K_BUSY &&
                 momentPassed(Killers[killer].timer))
             {
                 Debug("Killer %d is ready", killer);
                 SendKillerReady(killer);
+                Killers[killer].status = K_NOTIFIED;
+                //Killers[killer].client = -2;
             }
         }
         pthread_mutex_unlock(&killersMutex);

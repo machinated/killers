@@ -1,6 +1,7 @@
 #define _POSIX_C_SOURCE 199309L
 #define _BSD_SOURCE
 #include <stdlib.h>
+#include <sys/time.h>
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
@@ -125,7 +126,7 @@ void AddTime(Timespec* timeP, unsigned long millis)
 void SetKillerTimer(int killer)
 {
     Timespec timer;
-    if(clock_gettime(CLOCK_MONOTONIC, &timer))
+    if(clock_gettime(CLOCK_REALTIME, &timer))
     {
         Error("Error getting current time");
     }
@@ -142,7 +143,7 @@ void NewJob(int killer)
 {
     pthread_mutex_lock(&killersMutex);
     int oldClient = Killers[killer].client;
-    if (oldClient != -1)   // there was a previous job
+    if (oldClient >= 0)   // there was a previous job
     {
         SendUpdate(Q_DONE, oldClient);
         Killers[killer].client = -1;
@@ -161,9 +162,10 @@ void NewJob(int killer)
             client = QueuePop();
         }
         Killers[killer].client = client;
-        if (client != -1)
+        if (client >= 0)
         {
             SetKillerTimer(killer);
+            Killers[killer].status = K_BUSY;
         }
     }
     else
@@ -179,7 +181,7 @@ int GetFreeKiller()
     int killer = -1;
     for (int ik = 0; ik < nKillers; ik++)
     {
-        if (Killers[ik].client == -1)
+        if (Killers[ik].status != K_BUSY)
         {
             killer = ik;
             break;

@@ -101,14 +101,14 @@ void SendReview(int company, float review)
 
 int Compare(int queuePos1, float rep1, int queuePos2, float rep2)
 {
-    if (queuePos1 < queuePos2 * 0.5 && rep1 > rep2 + 1)
-    {
-        return -1;
-    }
-    if (queuePos2 < queuePos1 * 0.5 && rep2 > rep1 + 1)
-    {
-        return 1;
-    }
+    // if (queuePos1 < queuePos2 * 0.5 && rep1 > rep2 + 1)
+    // {
+    //     return -1;
+    // }
+    // if (queuePos2 < queuePos1 * 0.5 && rep2 > rep1 + 1)
+    // {
+    //     return 1;
+    // }
     return 0;
 }
 

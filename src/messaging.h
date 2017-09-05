@@ -42,8 +42,13 @@ int KILLTIME;
 
 typedef struct Killer {
     int client;
+    int status;
     Timespec timer;
 } Killer;
+
+#define K_READY 0
+#define K_BUSY 1
+#define K_NOTIFIED 2
 
 Killer* Killers;
 pthread_mutex_t killersMutex;
