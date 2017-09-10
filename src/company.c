@@ -136,7 +136,7 @@ void SetKillerTimer(int killer)
     AddTime(&timer, millis);
     Debug("Timer for killer %d set for %d ms", killer, millis);
     Killers[killer].timer = timer;
-    pthread_cond_signal(&jobAdded);
+    pthread_cond_signal(&wakeUpAgent);
 }
 
 void NewJob(int killer)
@@ -146,7 +146,7 @@ void NewJob(int killer)
     if (oldClient >= 0)   // there was a previous job
     {
         SendUpdate(Q_DONE, oldClient);
-        Killers[killer].client = -1;
+        Killers[killer].client = -1;    // FIXME
     }
 
     if (queueLen > 0)   // there is a new job
@@ -154,7 +154,7 @@ void NewJob(int killer)
         int client = QueuePop();
         while (client != -1)
         {
-            SendUpdate(Q_INPROGRESS, client);
+            SendUpdate(Q_IN_PROGRESS, client);
             if (AwaitAck(client) == ACK_OK)
             {
                 break;
@@ -170,7 +170,7 @@ void NewJob(int killer)
     }
     else
     {
-        Killers[killer].client = -1;
+        Killers[killer].client = -1;    // FIXME
     }
     pthread_mutex_unlock(&killersMutex);
 }
@@ -246,7 +246,7 @@ void RunCompany()
     }
     for (int ik = 0; ik < nKillers; ik++)
     {
-        Killers[ik].client = -1;
+        Killers[ik].client = -1;    // FIXME MPI_UNDEFINED
     }
 
     pthread_mutex_init(&killersMutex, NULL);

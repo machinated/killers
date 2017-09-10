@@ -85,7 +85,7 @@ void* RunAgent(void* arg)
     {
         pthread_mutex_lock(&killersMutex);
         Timespec sleepTime = GetSleepTime();
-        pthread_cond_timedwait(&jobAdded, &killersMutex, &sleepTime);
+        pthread_cond_timedwait(&wakeUpAgent, &killersMutex, &sleepTime);
         // killersMutex locked
 
         for (int killer = 0; killer < nKillers; killer++)
@@ -95,7 +95,7 @@ void* RunAgent(void* arg)
             {
                 Debug("Killer %d is ready", killer);
                 SendKillerReady(killer);
-                Killers[killer].status = K_NOTIFIED;
+                Killers[killer].status = K_NOTIFICATION_SENT;
                 //Killers[killer].client = -2;
             }
         }

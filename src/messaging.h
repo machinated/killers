@@ -46,17 +46,21 @@ typedef struct Killer {
     Timespec timer;
 } Killer;
 
+// possible Killer.status values:
 #define K_READY 0
 #define K_BUSY 1
-#define K_NOTIFIED 2
+#define K_NOTIFICATION_SENT 2    // job done
+                        // message KILLER_READY has been sent but not received yet
 
 Killer* Killers;
-pthread_mutex_t killersMutex;
-pthread_cond_t jobAdded;
+pthread_mutex_t killersMutex;   // protects list "Killers"
+pthread_cond_t wakeUpAgent;     // wake up agent when killer is sent by the thread running RunCompany
 
-#define Q_REJECTED -4
-#define Q_AVAILABLE -3
-#define Q_INPROGRESS -1
+// queue states (queue index special values)
+// queues[i] >= 0 <=> queues[i] is position in queue for company i
+#define Q_CANCELLED -4
+#define Q_NO_UPDATE_RECEIVED -3
+#define Q_IN_PROGRESS -1
 #define Q_DONE -2
 
 void Receive(Message* msgP, int tag, int* sender);
