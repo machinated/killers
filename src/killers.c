@@ -12,11 +12,11 @@
 const char helpMsg[] =
 "USAGE: killers -c N -k Z [-s S -t T -l L]\n"
 "OPTIONS:\n"
-"   -c N        number of companies\n"
-"   -k Z        number of killers\n"
-"   -s S        clients wait for S ms (default 3000)\n"
-"   -t T        time it takes for killer to kill someone in ms (default 4000)\n"
-"   -l L        print messages with L or higher priority (default 2)\n"
+"   -c N        Number of companies\n"
+"   -k Z        Number of killers\n"
+"   -s S        Clients wait for S ms (default 3000 ms)\n"
+"   -t T        Time in ms needed for a single killer to kill someone (default 4000 ms)\n"
+"   -l L        Print messages with the specifed priority level L or higher (default 2), where:\n"
 "               0 = TRACE, 1 = DEBUG, 2 = INFO, 3 = WARNING, 4 = ERROR\n";
 
 void parseOptions(int argc, char* argv[])
@@ -93,7 +93,7 @@ void parseOptions(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-    // MPI_Init(&argc, &argv);
+
     int provided;
 
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
@@ -110,6 +110,7 @@ int main(int argc, char* argv[])
     parseOptions(argc, argv);
 
     // init RNG
+    /* TBD --- remove the above?? comment */
     srand(processId);
 
     if (processId < nCompanies)

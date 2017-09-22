@@ -15,7 +15,6 @@
 
 typedef union Message {
     struct data_t {
-        //int pid;
         uint64_t clk;
         uint8_t data[24];
     } data;

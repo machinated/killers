@@ -1,0 +1,70 @@
+
+
+
+Zasady ogólne
+-------------
+
+[-] Z1 - Zaliczenie projektu jest indywidualne; to znaczy, grupa może zdawać w tym samym czasie, ale ocena końcowa w ogólności może się różnić (chociaż zazwyczaj jest taka sama).
+[-] Z2 - Zaliczenie odbywa się osobiście (nie można przesłać kodu i sprawozdania pocztą elektroniczną). Sprawdzony jest kod źródłowy oraz sprawozdanie.
+
+[?] Z3 - Zaliczenie odbywa się w laboratorium, przy czym program odpalony musi zostać na conajmniej trzech różnych maszynach.
+[?] Z4 - Program powinien umożliwić modyfikację parametrów projektów. Mogą to być stałe zapisane na sztywno w kodzie, lub (lepiej widziane) argumenty dla programu.
+  [Q] Jak można modyfikować parametry projektu?
+
+[?] Z5 - Uruchomiony program powinien wyświetlać informację o aktywności każdego procesu.
+[?]  Z5.1 - Każdą wypisaną informację należy poprzedzić wartością zegara logicznego Lamporta - konieczna jest więc implementacja zegara Lamporta w kodzie każdego projektu.
+[?]  Z5.2 - Minimalne informacje to ID procesu i aktualny stan (np. ubiegam się o sekcję krytyczną, otrzymałem miejsce w sekcji krytycznej), plus ewentualnie lokalna wiedza procesu o innych procesach.
+  [Q] Czy to jest zaimplementowane?
+
+[?] Z6 - Rozwiązania powinny być maksymalnie równoległe.
+[?] Z6.1 - Rozwiązanie, w którym wszystkie procesy mają zmienne globalne chronione przez sekcje krytyczne (i tylko jeden proces naraz może je wtedy modyfikować), jest niedopuszczalne.
+  [Q] Czy to wymaganie jest spełnine?
+  Sekcje krytyczne są tylko na danych do komunikacji pomiędzy dwoma wątkami tego samego procesu.
+
+[-] Z7 - Każdy projekt posiada wersję uproszczoną.
+[-] Z7.1 - Można oddać wersję uproszczoną (otrzymuje się wtedy ocenę 3.0) pod warunkiem, że odda się ją na ostatnich zajęciach, oraz jeżeli się zadeklaruje implementację wersji uproszczonej najpóźniej na przedostatnich zajęciach.
+
+[-] Z8 - Projekty oddane na czas otrzymują "bonus" w postaci łagodniejszego oceniania.
+[!] Z8.1 - Im później projekt będzie oddany, tym surowiej będzie oceniany.
+[!] Z8.2 - W przypadkach skrajnego opóźnienia będę na siłę wyszukiwał rzeczy, do których się można doczepić, i będę kazał jej poprawić. ;D "jej poprawić"
+[!] Z8.3 - Celem jest maksymalne zniechęcenie do oddawania projektów nie na czas.
+[!] Z8.4 - Dodatkowo, ocena będzie zmniejszona o pół stopnia dla projektów z opóźnieniem większym niż tydzien, o jeden stopien dla projektów z opóźnieniem większym niż trzy tygodnie, o półtorej stopnia dla projektów opóźnionych więcej niż pięć tygodni. Projekty oddawane w drugiej połowie września będą mogły być zaliczone tylko na trzy.
+[!!!] Z8.5 - Nie przyjmuję projektów oddawanych później, niż po 15 października (wymagany wtedy jest nowy temat i powtarzanie przedmiotu).
+
+==> Max OCENA TO 3.0 ;P Ale może lepsza, skoro jest tylko jedna osoba?
+
+
+
+Zasady dotyczące kodu
+---------------------
+
+[] K1 - Nie może istnieć jeden element centralny;
+[] K1.1- wszystkie algorytmy powinny być w pełni rozproszone, bez liderów, wyróżnionych procesów pełniących specjalne funkcje i tak dalej.
+[] K1.2 - Nie wolno niczego zakładać o czasie działania lub przesyłania komunikatów.
+[] K1.3 - Przyjmujemy, że środowisko jest w pełni asynchroniczne.
+[] K1.4 - Należy przyjąć, że kanały między procesami są FIFO i niezawodne, a procesy nie ulegają awarii.
+
+
+[] K2 - Kod powinien być podzielony na krótkie funkcje o nazwach jasno określających ich rolę.
+[] K2.1 - Czytelność i elegancja kodu nie wpływają na decyzję o odrzuceniu lub nie projektu, ale mogą wpływać na ocenę końcową (wyjątek: kiedy ktoś oddaje na czas).
+
+[] K3 - Należy unikać aktywnego czekania i nieblokujących funkcji.
+[] K3.2 - W przypadku ich użycia, należy umieć uzasadnić konieczność ich użycia.
+
+[-] K4 - Można użyć dowolnego języka programowania, ale tylko C oraz C++ mają 100% wsparcie.
+        W przypadku użycia innego języka (Pythona, Javy itp) należy samodzielnie sprawdzić, czy program się uruchomi w laboratorium i samodzielnie zabiegać u administratora o doinstalowanie odpowiednich bibliotek (jeżeli będzie to wymagane).
+
+
+Zasady dotyczące sprawozdania
+-----------------------------
+
+[+] S1 - Sprawozdanie nie powinno zawierać kodu.
+[] S1.1 - Powinno natomiast zawierać:
+         a)  opis problemu podany słownie lub w postaci pseudokodu (zawierającego tylko faktycznie potrzebne do zrozumienia algorytmu informację),
+         b)  założenia przyjęte na temat środowiska komunikacyjnego w tym:
+          - pojemność kanałów (ile wiadomości maksymalnie naraz może być w kanale),
+          [Q] Ile?
+          - oraz złożoność komunikacyjną i czasową
+          [Q] Jaka jest?
+
+[] S2 - Sprawozdanie musi być tak napisane, by na jego podstawie inna osoba była w stanie napisać implementację wymyślonego algorytmu.
