@@ -15,7 +15,7 @@
 #include "company.h"
 
 /* The Queue[customers]  */
-int* Queue;     // FIXME this comment semms to be redundant // client[queuePos]
+int* Queue;     /* Queue[queuePos] is a client's process number */
 /* Length of the current queue with customers */
 int queueLen;
 /* We need another thread for the agent of killers */
@@ -114,7 +114,7 @@ int QueuePop()
     if (queueLen < 1)
     {
         Debug("QueuePop: no elements");
-        return -1;
+        return NO_CLIENT;
     }
     int first = Queue[0];
     for (int qi = 0; qi < queueLen - 1; qi++)
@@ -168,16 +168,15 @@ void NewJob(int killer)
     if (oldClient >= 0)
     {
         SendUpdate(Q_DONE, oldClient);
-        Killers[killer].client = -1;    // FIXME use MPI_UNDEFINED instead of -1
-        /* FIXME - why a killer's status is not updated at this point? */
-        //Killers[killer].status = K_READY;
+        Killers[killer].client = NO_CLIENT;
+        Killers[killer].status = K_READY;
     }
 
     /* If there is any pending job in the queue with customers. */
     if (queueLen > 0)
     {
         int client = QueuePop();
-        while (client != -1) // FIXME use MPI_UNDEFINED instead of -1
+        while (client != NO_CLIENT)
         {
             /* Send notification that the job can be now assigned to a killer */
             SendUpdate(Q_IN_PROGRESS, client);
@@ -190,7 +189,6 @@ void NewJob(int killer)
             client = QueuePop();
         }
         /* Update a customer for the current killer. (-1) for unknown customer. */
-        // FIXME use MPI_UNDEFINED instead of -1
         Killers[killer].client = client;
         /* If we have a customer with a job for this killer:
          * set time of this task and update the killer's status */
@@ -202,9 +200,8 @@ void NewJob(int killer)
     }
     else         /* FIXME - do we need this? In which case? */
     {
-        Killers[killer].client = -1;      // FIXME use MPI_UNDEFINED instead of -1
-        /* FIXME - why a killer's status is not updated at this point? */
-        //Killers[killer].status = K_READY;
+        Killers[killer].client = NO_CLIENT;
+        Killers[killer].status = K_READY;
     }
     pthread_mutex_unlock(&killersMutex);
 }
@@ -214,10 +211,12 @@ void NewJob(int killer)
  * - '-1' when not found;
  * - Otherwise, id of the found killer.
  */
+
 int GetFreeKiller()
 {
     pthread_mutex_lock(&killersMutex);
-    int killer = -1; /* FIXME NO_FREE_KILLER It would be better to name this -1 value */
+
+    int killer = NO_FREE_KILLER;
     for (int ik = 0; ik < nKillers; ik++)
     {
         if (Killers[ik].status != K_BUSY)
@@ -248,7 +247,7 @@ void ReceiveMessages()
             {
                 int killer = GetFreeKiller();
                 /* If there is a free killer witout job, assign it. */
-                if (killer != -1) /* FIXME use NO_FREE_KILLER It would be better to name this -1 value */
+                if (killer != NO_FREE_KILLER)
                 {
                     NewJob(killer);
                 }
@@ -284,7 +283,7 @@ void RunCompany()
 {
     Debug("Process %d running as manager", processId);
     /* Allocate the Queue[] table for all customers. */
-    Queue = (int*) calloc(nProcesses, sizeof(int)); /* FIXME? nProcesses-nCompanies */
+    Queue = (int*) calloc(nProcesses - nCompanies, sizeof(int));
     queueLen = 0;
 
     /* Allocate descriptors for nKillers. */
@@ -299,7 +298,7 @@ void RunCompany()
     for (int ik = 0; ik < nKillers; ik++)
     {
         /* Customers not assigned yet */
-        Killers[ik].client = -1;    // FIXME use MPI_UNDEFINED instead of -1
+        Killers[ik].client = NO_CLIENT;
     }
 
     /* Initialize the mutex for protection of the list with killers. */

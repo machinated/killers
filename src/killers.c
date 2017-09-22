@@ -109,8 +109,6 @@ int main(int argc, char* argv[])
 
     parseOptions(argc, argv);
 
-    // init RNG
-    /* TBD --- remove the above?? comment */
     srand(processId);
 
     if (processId < nCompanies)

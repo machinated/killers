@@ -103,7 +103,7 @@ void* RunAgent(void* arg)
         pthread_mutex_lock(&killersMutex);
         Timespec sleepTime = GetSleepTime();
         pthread_cond_timedwait(&wakeUpAgent, &killersMutex, &sleepTime);
-        // killersMutex locked /* FIXME - is it really locked by who??? */
+        /* killersMutex is locked */
 
         /* Check all killers which have done their job and send notification to the manager in the company. */
         for (int killer = 0; killer < nKillers; killer++)
@@ -117,7 +117,6 @@ void* RunAgent(void* arg)
                 Killers[killer].status = K_NOTIFICATION_SENT;
             }
         }
-        /* FIXME where this mutex is taken? */
         pthread_mutex_unlock(&killersMutex);
     }
 }

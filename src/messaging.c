@@ -158,17 +158,6 @@ void Send(void* data, int dest, int tag)
     localClock++;
 }
 
-/* TBD
- * Not used - remove as redundant
- */
-void SendToAll(void* data, int tag)
-{
-    for(int i = 0; i < nProcesses; i++)
-    {
-        Send(data, i, tag);
-    }
-}
-
 /* This routine allows to send a message to all companies
  * with the given <tag> and the specified <data>.
  */

@@ -10,10 +10,6 @@
 #include "timer.h"
 #include "client.h"
 
-/* FIXME - remove it if rredundant */
-//#define SLEEPTIME 3000  // ms
-
-
 /* Values of a customer's state */
 typedef enum State
 {
@@ -133,18 +129,17 @@ void SendReview(int company, float review)
     SendToClients(&msgReview, TAG_REVIEW);
 }
 
-/* FIXME - nothig to do here or functionality is missing.
- * Note that it is important to not send a rejection when both values represent the same company. */
+/* Note that it is important to not send a rejection when both values represent the same company. */
 int Compare(int queuePos1, float rep1, int queuePos2, float rep2)
 {
-    // if (queuePos1 < queuePos2 * 0.5 && rep1 > rep2 + 1)
-    // {
-    //     return -1;
-    // }
-    // if (queuePos2 < queuePos1 * 0.5 && rep2 > rep1 + 1)
-    // {
-    //     return 1;
-    // }
+    if (queuePos1 < queuePos2 * 0.5 && rep1 > rep2 + 1)
+    {
+        return -1;
+    }
+    if (queuePos2 < queuePos1 * 0.5 && rep2 > rep1 + 1)
+    {
+        return 1;
+    }
     return 0;
 }
 
@@ -236,8 +231,7 @@ void RunClient()
                         }
                         break;
                     }
-                    /* If we received information about the current place is a queue from some company then check whether this is a better proposition.
-                    * FIXME it seems that nothig done here. Remove this as redundant or fix it */
+                    /* If we received information about the current place is a queue from some company then check whether this is a better proposition. */
                     else if (queueIndex >= 0)
                     {
                         for (int i = 0; i<nCompanies; i++)

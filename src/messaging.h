@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <mpi.h>
 #include "message.h"
 
 typedef struct timespec Timespec;
@@ -48,6 +49,8 @@ typedef struct Killer {
     Timespec timer;            /* Time related with the current task ?? (time to the end)?? */
 } Killer;
 
+#define NO_CLIENT MPI_UNDEFINED
+#define NO_FREE_KILLER -1
 
 /* Possible values of a Killer's status 'Killer.status': */
 #define K_READY 0              /* Awaiting for a job */
@@ -81,10 +84,6 @@ void ReceiveAny(Message* msgP, int* tag, int* sender);
 
 void Send(void* data, int dest, int tag);
 
-/* TBD
- * Not used - remove as redundant
- */
-void SendToAll(void* data, int tag);
 
 void SendToCompanies(void* data, int tag);
 
