@@ -9,6 +9,12 @@
 #include "messaging.h"
 #include "agent.h"
 
+
+/* Check whether the specified <time> already passed.
+ * Return:
+ *  '1' - True;
+ *  '0' - 'False'
+ */
 int momentPassed(Timespec time)
 {
     Timespec current;
@@ -37,6 +43,7 @@ int momentPassed(Timespec time)
     }
 }
 
+/* Send notification to the company that the specified <killer> is ready. */
 void SendKillerReady(int killer)
 {
     MessageKillerReady msgK;
@@ -45,6 +52,9 @@ void SendKillerReady(int killer)
     Send(&msgK, processId, TAG_KILLER_READY);
 }
 
+/* Determine the minimal time value based on the given <a> and <b>.
+ * Return the smaller one.
+ */
 Timespec MinTimer(Timespec a, Timespec b)
 {
     if (a.tv_sec < b.tv_sec)
@@ -66,6 +76,11 @@ Timespec MinTimer(Timespec a, Timespec b)
     return a;
 }
 
+
+/* Determine when the fastest killer will complete his job.
+ * Note that only killers with status <K_BUSY> are considered.
+ * Note that the <killersMutex> needs to be taken by a coller.
+ */
 Timespec GetSleepTime()
 {
     Timespec minTimer;
@@ -79,6 +94,8 @@ Timespec GetSleepTime()
     return minTimer;
 }
 
+
+/* Agent of killers in the current company */
 void* RunAgent(void* arg)
 {
     while(1)
@@ -86,19 +103,21 @@ void* RunAgent(void* arg)
         pthread_mutex_lock(&killersMutex);
         Timespec sleepTime = GetSleepTime();
         pthread_cond_timedwait(&wakeUpAgent, &killersMutex, &sleepTime);
-        // killersMutex locked
+        // killersMutex locked /* FIXME - is it really locked by who??? */
 
+        /* Check all killers which have done their job and send notification to the manager in the company. */
         for (int killer = 0; killer < nKillers; killer++)
         {
             if (Killers[killer].status == K_BUSY &&
                 momentPassed(Killers[killer].timer))
             {
                 Debug("Killer %d is ready", killer);
+                /* Send notification to the company that the i-th <killer> is already ready and his job/task is DONE.  */
                 SendKillerReady(killer);
                 Killers[killer].status = K_NOTIFICATION_SENT;
-                //Killers[killer].client = -2;
             }
         }
+        /* FIXME where this mutex is taken? */
         pthread_mutex_unlock(&killersMutex);
     }
 }

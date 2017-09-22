@@ -2,6 +2,7 @@
 #include <time.h>
 #include "messaging.h"
 
+/* This routine stores current time in the given <timer> variable. */
 void startTimer(Timespec* timer)
 {
     if(clock_gettime(CLOCK_REALTIME, timer))
@@ -10,6 +11,8 @@ void startTimer(Timespec* timer)
     }
 }
 
+/* This function returns the number of elapsed milisseconds
+ * from the specified <timer> vaue with time. */
 unsigned long elapsedMillis(Timespec* timer)
 {
     Timespec current;

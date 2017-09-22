@@ -2,50 +2,90 @@
 # Oznaczenia
 W sprawozdaniu (niekoniecznie w kodzie) używane są następujące oznaczenia:
 
-N - liczba procesów firm oferujących zabójców
-Z - liczba zabójców w każdej z firm
-P - liczba wszystkich procesów
-K - liczba procesów klientów
-S - średni czas, jaki klienci oczekują między kolejnymi zleceniami
-T - średni czas wykonania zlecenia
+- *N*: liczba procesów firm oferujących zabójców
+- *Z*: liczba zabójców w każdej z firm
+- *P*: liczba wszystkich procesów
+- *K*: liczba procesów klientów
+- *S*: średni czas, jaki klienci oczekują między kolejnymi zleceniami
+- *T*: średni czas wykonania zlecenia
 
 # Założenia
-Kanały komunikacyjne FIFO, komunikacja niezawodna.
+Kanały komunikacyjne między procesami są typu FIFO i zapewniają niezawodną komunikację.
+Środowisko w pełni asynchroniczne.
+Czas działania, czas przeysłania kominikatów - brak założeń.
 
 ## Wymagania techniczne
 OpenMPI 1.10 z opcją MPI_THREAD_MULTIPLE (zapewnia, że wywołania OpenMPI są thread-safe).
 
 # Typy procesów
 
-Procesy o identyfikatorze (rank) od 0 do N-1 to procesy firm.
+Procesy o identyfikatorze (rank) od 0 do N-1 to procesy reprezentujące firmy (oferujące usługi zabójców).
 Pozostałe procesy (od N do P-1) to klienci.
-P = N + K
+Suma wszystkich procesów P jest zdefiniowana następująco:
+  P = N + K
 
 # Implementacja
 
 ## Klient
 
-Każdy proces klienta może zgłosić maksymalnie jedno zlecenie.
-Wartość zmiennej "state" oznacza zarówno stan procesu klienta, jak i zlecenia.
-
-Klient oczekuje losowy okres czasu zanim zacznie ubigać się o zabójcę.
-Następnie wysyła wiadomości typu REQUEST do wszystkich firm.
-Liczba firm (N) jest znana dla klienta, więc zna numery procesów, do których powinien wysłać zlecenie.
-Odbiór wszystkich wiadomości REQUEST nie jest konieczny do kontynuowania przetwarzania przez klienta.
-
-Proces następnie oczekuje na przychodzące wiadomości UPDATE.
-Po odebraniu wiadomości, pozycja w kolejce jest zapisywana w tablicy "queues".
-Przejście do następnego stanu następuje na skutek odebrania wiadomości ze statusem IN_PROGRESS;
-W odpowiedzi klient wysyła wiadomość typu ACK.
+*K1*: Każdy proces klienta powinien zgłosić maksymalnie jedno zlecenie (aż do czasu końca jego realizacji). Potem może zgłosić następne.
+  *Notes 1*: Wartość zmiennej "state" oznacza zarówno stan procesu klienta, jak i jego aktualnego zlecenia. Wyróżniamy następujące wartości zmiennej "state":
+  - *WAITING*: Klient nie ma aktualnie zlecenia dla zabójcy;
+  - *NOQUEUE*: Klient ma zlecenie do realizacji - informuje o tym usługodawców. Ponadto nie ma jeszcze żadnego wyznaczonego miejsca w kolejce.
+  - *QUEUE*: Klient oczekuje na przyjęcie zlecenia do realizacji i wyznaczenie miejsca w kolejkach przez poszczególne firmy.
+  - *INPROGRESS*: Zlecenia klienta jest w trakcie realizacji; Po otrzymaniu wiadomości typu *TAG_REQUEST* ze statusem *Q_DONE*, klient rozsyła swoją recenzję (w postaci oceny wykonanej usługi do wszystkich klientów).
 
 
-Odbiór wiadomości typu REVIEW następuje za każdym razem, kiedy proces oczekuje na wiadomości UPDATE.
-Oznacza to, że kiedy proces nie ubiega się o zabójcę, wiadomości oczekują w kanale komunikacyjnym.
+*K2*: Klient powinien oczekiwać w stanie *WAITING* losowy okres czasu zanim zacznie ubigać się o usługę zabójcy. Po upływie tego czasu przechodzi do stanu *NOQUEUE*.
 
-### Deskryptor
+*K3*: Klient w stanie *NOQUEUE* powinien wysłać wiadomość typu *TAG_REQUEST* do wszystkich firm (aby sprawdzić dostępne miejsca w kolejkach), a następnie przejść do kolejnego stanu *QUEUE*.
+  *Notes 1*: Liczba firm (N) jest z góry znana klientowi, więc znane są mu także numery procesów, do których powinien wysłać zlecenie.
+  *Notes 2*: Potwierdzenie odbioru wiadomości typu *TAG_REQUEST* przez wszystkie firmy nie jest konieczne do kontynuowania przetwarzania zlecenia przez klienta.
 
-enum State state
+*K4*: Po wykonaniu kroku *K3*, proces klienta powinien oczekiwać na przychodzące wiadomości typu *TAG_UPDATE*.
+
+*K5*: W czasie oczekiwania na wiadomości typu *TAG_UPDATE* klient powinien również aktualizować informację na temat wystawionych recenzji.
+  *Notes 1*: Nowe recenzje razem z aktualnym miejscem w kolejce mogą wpłynąć na zmianę preferencji klienta i rezygnację z kolejki u innych firm.
+
+*K5*: Po odebraniu wiadomości typu *TAG_UPDATE* z wartością nieujemną, klient powinien zapisać wyznaczone miejsce w kolejce n-tej firmy w tablicy "queues" na n-tej pozycji.
+  *Notes 1*: Wyznaczone miejsce w kolejce n-tej firmy jest przesłane w wiadomości typu *TAG_UPDATE* jako wartość nieujemna. Wartości ujemne są zarezerwowane na inne komunikaty specjalnego przeznaczenia (np. *Q_IN_PROGRESS*, *Q_DONE* itd.);
+
+*K6* Przejście klienta ze stanu *QUEUE* do następnego *INPROGRESS* powinno nastąpić po odebrania pierwszej wiadomości typu *TAG_UPDATE* ze statusem *Q_IN_PROGRESS*;
+  *K6.1* W odpowiedzi na pierwszy komunikat *Q_IN_PROGRESS*, klient powinien wysłać wiadomość typu *ACK_OK* do tej firmy a do pozostałych *ACK_REJECT*.
+  *K6.2* Niezależnie od otrzymanych wiadomości, klient powinien zrezygnować z miejsc w kolejkach pozostałych firm poprzez wysłanie wiadomości typu *TAG_CANCEL* do każdej z nich i oznaczeniu odpowiednich miejsc w tablicy *queues* jako *Q_CANCELLED*.
+
+*K7* Klient powinien oczekiwać na pomyślne wykonanie zlecenia (w stanie *INPROGRESS* na wiadomość typu *TAG_UPDATE* ze statusem *Q_DONE*).
+  *Notes 1* Można założyć, że otrzymamy tylko jedną taką wiadomość (od firmy, która podjęła się zlecenia jako pierwsza).
+  Oznacza to, że nie ma konieczności sprawdzania czy ta wiadomość pochodzi z dobrego źródła.
+  (FIXME FYI odważne założenine)
+
+  *Notes 2* Przetworzenie wiadomości typu *TAG_REVIEW* może nastąpić za każdym razem, kiedy proces klienta oczekuje na wiadomości typu *TAG_UPDATE*. Oznacza to, że kiedy proces nie ubiega się o zabójcę, wiadomości oczekują w kanale komunikacyjnym.
+  (FIXME - potencjalnie to może być problem, bo kolejka może się zapchać po dłuższym oczekiwaniu w stanie *WAITING* albo może znacząco opóźnić odczyt wiadomości od firm.)
+
+  *K7.1* Klient powinien rozesłać ocenę wykonanej usługi do wszystkich klientów. (Działa to jak marketing szeptany.)
+  *K7.2* Klient powinien posprzątać informację na temat zajmowanych kolejek z tego zlecenia i przejść do stanu zadumy *WAITING*.
+
+
+
+
+### Deskryptor stanu klienta (tzn. stanu zlecenia danego klienta)
+
+--->
+/* Values of customer's state */
+typedef enum State
+{
+    WAITING,       /* A customer has no new task/job yet for a killer. */
+    NOQUEUE,       /* A customer has a task/job, but it is not in any queue yet.
+                    * In this state the customer sends a request to all companies. */
+    QUEUE,         /* A customer has been waiting for infomration, that the task/job is in progress by one of these companies. In this state the customer considers new review ratings (if any). */
+    INPROGRESS     /* The task/job is in progress. Awaiting for conformation that it is completed. In this state the customer sends notification to other customers about his review rating. */
+} State;
+<--
+
+
 int queues[N]
+(??)
+
 
 ### Funkcje
 
@@ -57,6 +97,8 @@ function onUpdate(MessageUpdate)
             wysłanie CANCEL do pozostałych firm
         if (state == IN_PROGRESS)
             Send(ACK(ACK_REJECT), N_i)
+
+
 
 ## Firma
 

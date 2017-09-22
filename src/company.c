@@ -14,11 +14,17 @@
 #include "agent.h"
 #include "company.h"
 
-int* Queue;     // client[queuePos]
+/* The Queue[customers]  */
+int* Queue;     // FIXME this comment semms to be redundant // client[queuePos]
+/* Length of the current queue with customers */
 int queueLen;
-
+/* We need another thread for the agent of killers */
 pthread_t agentThread;
 
+
+/* Send the TAG_UPDATE message to the <dest> customer with the assigned
+ * <queuePos> position in the queue.
+ */
 void SendUpdate(int queuePos, int dest)
 {
     MessageUpdate msgUpdate;
@@ -27,6 +33,7 @@ void SendUpdate(int queuePos, int dest)
     Send(&msgUpdate, dest, TAG_UPDATE);
 }
 
+/* This routine allows printing of the current queue with customers. */
 void PrintQueue()
 {
     char* str = (char*) calloc(queueLen * 5, sizeof(char));
@@ -40,6 +47,11 @@ void PrintQueue()
     free(str);
 }
 
+/* This routine checks whether the specified customer is already in the queue.
+ * Returns:
+ * 1 - when found
+ * 0 - when NOT found
+ */
 int QueueContains(int client)
 {
     for (int i = 0; i < queueLen; i++)
@@ -52,6 +64,8 @@ int QueueContains(int client)
     return 0;
 }
 
+
+/* Add the specified <client> to the queue. */
 void QueueAdd(int client)
 {
     assert(!QueueContains(client));
@@ -64,6 +78,7 @@ void QueueAdd(int client)
     PrintQueue();
 }
 
+/* Remove the specified <client> from the queue. */
 void QueueRemove(int client)
 {
     int found = 0;
@@ -93,6 +108,7 @@ void QueueRemove(int client)
     }
 }
 
+/* Take the first element from the queue (if any) */
 int QueuePop()
 {
     if (queueLen < 1)
@@ -112,6 +128,7 @@ int QueuePop()
     return first;
 }
 
+/* Add the specified number of milliseconds <millis> to the given <timeP>. */
 void AddTime(Timespec* timeP, unsigned long millis)
 {
     timeP->tv_nsec += (millis - (millis/1000) * 1000) * 1000000;
@@ -123,6 +140,7 @@ void AddTime(Timespec* timeP, unsigned long millis)
     timeP->tv_sec += millis/1000;
 }
 
+/* Set the timer of the specified <killer> */
 void SetKillerTimer(int killer)
 {
     Timespec timer;
@@ -136,49 +154,70 @@ void SetKillerTimer(int killer)
     AddTime(&timer, millis);
     Debug("Timer for killer %d set for %d ms", killer, millis);
     Killers[killer].timer = timer;
+    /* Wakeup the agent */
     pthread_cond_signal(&wakeUpAgent);
 }
 
+/* Assign a new job/task to the specified <killer> */
 void NewJob(int killer)
 {
     pthread_mutex_lock(&killersMutex);
     int oldClient = Killers[killer].client;
-    if (oldClient >= 0)   // there was a previous job
+    /* If there was a previous job, it has been DONE already.
+     * Send a notification to the customer. */
+    if (oldClient >= 0)
     {
         SendUpdate(Q_DONE, oldClient);
-        Killers[killer].client = -1;    // FIXME
+        Killers[killer].client = -1;    // FIXME use MPI_UNDEFINED instead of -1
+        /* FIXME - why a killer's status is not updated at this point? */
+        //Killers[killer].status = K_READY;
     }
 
-    if (queueLen > 0)   // there is a new job
+    /* If there is any pending job in the queue with customers. */
+    if (queueLen > 0)
     {
         int client = QueuePop();
-        while (client != -1)
+        while (client != -1) // FIXME use MPI_UNDEFINED instead of -1
         {
+            /* Send notification that the job can be now assigned to a killer */
             SendUpdate(Q_IN_PROGRESS, client);
+            /* Get the job done after confirmation by the <client>. */
             if (AwaitAck(client) == ACK_OK)
             {
                 break;
             }
+            /* Take the next job from the list. */
             client = QueuePop();
         }
+        /* Update a customer for the current killer. (-1) for unknown customer. */
+        // FIXME use MPI_UNDEFINED instead of -1
         Killers[killer].client = client;
+        /* If we have a customer with a job for this killer:
+         * set time of this task and update the killer's status */
         if (client >= 0)
         {
             SetKillerTimer(killer);
             Killers[killer].status = K_BUSY;
         }
     }
-    else
+    else         /* FIXME - do we need this? In which case? */
     {
-        Killers[killer].client = -1;    // FIXME
+        Killers[killer].client = -1;      // FIXME use MPI_UNDEFINED instead of -1
+        /* FIXME - why a killer's status is not updated at this point? */
+        //Killers[killer].status = K_READY;
     }
     pthread_mutex_unlock(&killersMutex);
 }
 
+/* Try to find a free killer.
+ * Returns:
+ * - '-1' when not found;
+ * - Otherwise, id of the found killer.
+ */
 int GetFreeKiller()
 {
     pthread_mutex_lock(&killersMutex);
-    int killer = -1;
+    int killer = -1; /* FIXME NO_FREE_KILLER It would be better to name this -1 value */
     for (int ik = 0; ik < nKillers; ik++)
     {
         if (Killers[ik].status != K_BUSY)
@@ -191,37 +230,45 @@ int GetFreeKiller()
     return killer;
 }
 
+/* Obtain any message and handle it */
 void ReceiveMessages()
 {
     Message msg;
     int tag, sender;
-    ReceiveAll(&msg, &tag, &sender);
+    ReceiveAny(&msg, &tag, &sender);
 
     switch(tag)
     {
+        /* This is a request from a customer. */
         case TAG_REQUEST:
         {
+            /* Append it to the queue with pending customers. */
             QueueAdd(sender);
             if (queueLen == 1)
             {
                 int killer = GetFreeKiller();
-                if (killer != -1)
+                /* If there is a free killer witout job, assign it. */
+                if (killer != -1) /* FIXME use NO_FREE_KILLER It would be better to name this -1 value */
                 {
                     NewJob(killer);
                 }
             }
             break;
         }
+        /* A customer <sender> has cancelled a reservation in a queue. */
         case TAG_CANCEL:
         {
+            /* Job cancelled. That's OK, just remove this job/customer from the queue with pending tasks. */
             QueueRemove(sender);
             break;
         }
+        /* Notification from the agent that a killer is ready. */
         case TAG_KILLER_READY:
         {
             MessageKillerReady* msgK = (MessageKillerReady*) &(msg.data.data);
             int killer = msgK->killer;
             Debug("Received KILLER_READY from %d, killer: %d", sender, killer);
+            /* Try to reassign a next job for this killer. */
             NewJob(killer);
             break;
         }
@@ -232,26 +279,35 @@ void ReceiveMessages()
     }
 }
 
+/* Run a new company */
 void RunCompany()
 {
     Debug("Process %d running as manager", processId);
-    Queue = (int*) calloc(nProcesses, sizeof(int));
+    /* Allocate the Queue[] table for all customers. */
+    Queue = (int*) calloc(nProcesses, sizeof(int)); /* FIXME? nProcesses-nCompanies */
     queueLen = 0;
 
+    /* Allocate descriptors for nKillers. */
     Killers = (Killer*) calloc(nKillers, sizeof(Killer));
 
+    /* Ensure that we have enough memory */
     if(Queue == NULL || Killers == NULL)
     {
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
+    /* Initialize all killers. */
     for (int ik = 0; ik < nKillers; ik++)
     {
-        Killers[ik].client = -1;    // FIXME MPI_UNDEFINED
+        /* Customers not assigned yet */
+        Killers[ik].client = -1;    // FIXME use MPI_UNDEFINED instead of -1
     }
 
+    /* Initialize the mutex for protection of the list with killers. */
     pthread_mutex_init(&killersMutex, NULL);
+    /* Create the dedicated thread for the role agent of killers. */
     pthread_create(&agentThread, NULL, &RunAgent, NULL);
 
+    /* Now, the company can focus on incomming messages. */
     while(1)
     {
         ReceiveMessages();
