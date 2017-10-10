@@ -74,7 +74,6 @@ pthread_cond_t wakeUpAgent;     /* Wake up the killers' agent when a killer is a
 #define Q_DONE -2                    /* Notification from a company that the task has been completed. */
 
 
-
 /* Common functions used for communication between processes. */
 
 
@@ -84,14 +83,10 @@ void ReceiveAny(Message* msgP, int* tag, int* sender);
 
 void Send(void* data, int dest, int tag);
 
-
-void SendToCompanies(void* data, int tag);
-
-void SendToClients(void* data, int tag);
+void SendToAll(void* data, int tag);    // TODO
 
 void SendAck(int pid, int ack);
 
 int AwaitAck(int pid);
-
 
 #endif

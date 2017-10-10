@@ -158,25 +158,14 @@ void Send(void* data, int dest, int tag)
     localClock++;
 }
 
-/* This routine allows to send a message to all companies
- * with the given <tag> and the specified <data>.
- */
-void SendToCompanies(void* data, int tag)
+void SendToAll(void* data, int tag)
 {
-    for (int i = 0; i < nCompanies; i++)
+    for (int i = 0; i < nProcesses; i++)
     {
-        Send(data, i, tag);
-    }
-}
-
-/* This routine allows to send a message to all customers
- * with the given <tag> and the specified <data>.
- */
-void SendToClients(void* data, int tag)
-{
-    for (int i = nCompanies; i < nProcesses; i++)
-    {
-        Send(data, i, tag);
+        if (i != processId)
+        {
+            Send(data, i, tag);
+        }
     }
 }
 
