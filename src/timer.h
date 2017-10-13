@@ -1,5 +1,8 @@
 #ifndef _TIMER
 #define _TIMER
+#include <time.h>
+
+typedef struct timespec Timespec;
 
 void startTimer(Timespec* timer);
 

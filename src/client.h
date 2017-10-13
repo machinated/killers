@@ -1,7 +1,8 @@
 #ifndef _CLIENT
 #define _CLIENT
-
-void RunClient();
+#include <stdint.h>
+#include <pthread.h>
+#include "queue.h"
 
 // Values of a customer's state
 typedef enum State
@@ -30,33 +31,29 @@ Queue* Queues;          // Queue[n] is a queue for company n
 
 uint8_t* AckReceived;
 State state;
+
 int requestedCompany;    // requested or used
 int requestedKiller;
 
-// TODO
-void AbortRequest();
+pthread_cond_t messageReceivedCond;
 
-void CheckConfirmed();
+pthread_mutex_t threadMutex;
 
-void CheckCancel(int company);
-
-// void lockQueues();
-// void unlockQueues();
-// void lockKillers();
-// void unlockKillers();
-
-void InitKillers();
-void InitQueues();
-void Enqueue();
 void CancelCompany(int company);
-int GetFreeKiller(int company);
-int GetFreeCompany(int* company, int* killer);
-int TryTakeKiller();
-void PrintReputations();
-void HandleReview(MessageReview* msg);
-void CheckConfirmed();
-void CheckCancel(int company);
-void AbortRequest();
-void SendReview(int company, float review);
+
+void RunClient();
+
+// void InitKillers();
+// void InitQueues();
+// void Enqueue();
+// void CancelCompany(int company);
+// int GetFreeKiller(int company);
+// int GetFreeCompany(int* company, int* killer);
+// int TryTakeKiller();
+// void PrintReputations();
+// void HandleReview(MessageReview* msg);
+// void CheckConfirmed();
+// void CheckCancel(int company);  // should we cancel queue for this company
+// void SendReview(int company, float review);
 
 #endif

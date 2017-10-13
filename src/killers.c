@@ -1,13 +1,14 @@
-#define _BSD_SOURCE
+// #define _BSD_SOURCE
+#define _POSIX_C_SOURCE 199309L
 #include <mpi.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <assert.h>
 #include "messaging.h"
+#include "logging.h"
+#include "common.h"
 #include "client.h"
-#include "company.h"
-#include "agent.h"
 
 const char helpMsg[] =
 "USAGE: killers -c N -k Z [-s S -t T -l L]\n"
@@ -111,14 +112,7 @@ int main(int argc, char* argv[])
 
     srand(processId);
 
-    if (processId < nCompanies)
-    {
-        RunCompany();
-    }
-    else
-    {
-        RunClient();
-    }
+    RunClient();
 
     MPI_Finalize();
 }

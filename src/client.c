@@ -1,4 +1,5 @@
-#define _BSD_SOURCE
+// #define _BSD_SOURCE
+#define _POSIX_C_SOURCE 199309L
 #include <mpi.h>
 #include <time.h>
 #include <stdlib.h>
@@ -6,12 +7,17 @@
 #include <string.h>
 #include <limits.h>
 #include <assert.h>
-#include <errno.h>
 #include "message.h"
 #include "messaging.h"
 #include "timer.h"
+#include "utils.h"
 #include "queue.h"
+#include "logging.h"
+#include "common.h"
+#include "listener.h"
 #include "client.h"
+
+pthread_t listenerThread;
 
 void InitKillers()
 {
@@ -39,6 +45,7 @@ void InitQueues()
     }
 }
 
+// Add self to all queues and send TAG_ENQUEUE to every other process
 void Enqueue()
 {
     SendToAll(NULL, TAG_ENQUEUE);
@@ -50,22 +57,25 @@ void Enqueue()
     SendToAll(NULL, TAG_ENQUEUE);
 }
 
+// Remove self from local queue associated with company
+// and send TAG_CANCEL to every other process
 void CancelCompany(int company)
 {
-    Queue* queue = Queues[company];
+    Queue* queue = &(Queues[company]);
     QueueRemove(queue, processId);
     MessageCancel msgCancel;
-    msgCancel.company = prodcessId;
+    msgCancel.company = processId;
     SendToAll(&msgCancel, TAG_CANCEL);
 }
 
-int GetFreeKiller(int company)
+// helper function for GetFreeCompany
+int _GetFreeKiller(int company)
 {
-    uint8_t companyKillers = Killers[company];
+    uint8_t* companyKillers = Killers[company];
 
     for (int killer = 0; killer < nKillers; killer++)
     {
-        if (companyKillers[killer] = KILLER_FREE)
+        if (companyKillers[killer] == KILLER_FREE)
         {
             return killer;
         }
@@ -74,13 +84,16 @@ int GetFreeKiller(int company)
     return -1;
 }
 
+// Search local queues for available killer.
+// If found set values of *company and *killer and return 0.
+// If NOT found return -1.
 int GetFreeCompany(int* company, int* killer)
 {
     for (int ic = 0; ic < nCompanies; ic++)
     {
-        if (Queues[ic][0] == processId)
+        if (Queues[ic].queueArray[0] == processId)
         {
-            int ikiller = GetFreeKiller(ic);
+            int ikiller = _GetFreeKiller(ic);
             if (ikiller != -1)
             {
                 *company = ic;
@@ -105,96 +118,10 @@ int TryTakeKiller()
     msg.killer = killer;
     SendToAll(&msg, TAG_REQUEST);
     return 1;
-
-    // uint8_t* ackReceived = calloc(nProcesses);
 }
 
-void PrintReputations()
-{
-    if (logPriority <= LOG_DEBUG)
-    {
-        char* str = (char*) calloc(nCompanies * 5, sizeof(char));
-        char elem[5];
-        for (int ci = 0; ci < nCompanies; ci++)
-        {
-            sprintf(elem, "%.2f ", reputations[ci]);
-            strncat(str, elem, 5);
-        }
-        Debug("REPUTATIONS: %s", str);
-        free(str);
-    }
-}
-
-/* Handle the obtained review message 'msg' */
-void HandleReview(MessageReview* msg)
-{
-    reputations[msg->company] = reputations[msg->company] * 0.9 +
-                                msg->review * 0.1;
-    PrintReputations();
-}
-
-void CheckConfirmed()
-{
-    assert(state == REQUESTING);
-
-    for (int company = 0; company < nCompanies; company++)
-    {
-        if (AckReceived[company] == 0)
-        {
-            return;
-        }
-    }
-
-    for (int company = 0; company < nCompanies; company++)
-    {
-        AckReceived[company] = 0;
-    }
-    state = CONFIRMED;
-}
-
-void CheckCancel(int company)
-{
-    Queue* queue = Queues[company];
-    int pos = QueueFind(queue, processId);
-    float rep = reputations[company];
-
-    for (int ic = 0; ic < nCompanies; ic++)
-    {
-        Queue* iqueue = Queues[ic];
-        int ipos = QueueFine(iqueue, processId);
-        float irep = reputations[ic];
-
-        int res = Compare(pos, rep, ipos, irep);
-        if (res == -1)
-        {
-            Debug("Leaving queue for %d (rep %f) "
-                  "in favor of %d (rep %f)",
-                  i, irep, company, rep);
-            CancelCompany(ic);
-        }
-        else if (res == 1)
-        {
-            Debug("Leaving queue to %d (rep %f) "
-                  "in favor of %d (rep %f)",
-                  company, rep, i, irep);
-            SendCancel(company);
-        }
-    }
-}
-
-void AbortRequest()
-{
-    for (int company = 0; company < nCompanies; company++)
-    {
-        AckReceived[company] = 0;
-    }
-    state = QUEUE;
-}
-
-
-/* Send notification to all customers about the current <review>
- * of the completed job by the specified <company>.
- */
+// Send notification to all customers about the current <review>
+// of the completed job by the specified <company>.
 void SendReview(int company, float review)
 {
     MessageReview msgReview;
@@ -203,44 +130,36 @@ void SendReview(int company, float review)
     SendToAll(&msgReview, TAG_REVIEW);
 }
 
-/* Note that it is important to not send a rejection when both values represent the same company. */
-int Compare(int queuePos1, float rep1, int queuePos2, float rep2)
-{
-    // if (queuePos1 < queuePos2 * 0.5 && rep1 > rep2 + 1)
-    if (queuePos1 < queuePos2 && rep1 > rep2)
-    {
-        return -1;
-    }
-    // if (queuePos2 < queuePos1 * 0.5 && rep2 > rep1 + 1)
-    if (queuePos2 < queuePos1 && rep2 > rep1)
-    {
-        return 1;
-    }
-    return 0;
-}
-
 void RunClient()
 {
+    pthread_mutex_init(&threadMutex, NULL);
+
     Debug("Process %d started", processId);
     state = WAITING;   /* Init state of the state machine */
 
     reputations = (float*) calloc(nCompanies, sizeof(float));
-    InitKillers();
-    InitQueues();
-
-    Timespec queueTimer;
-    Timespec requestTimer;
-
-    assert(reputations != NULL && queues != NULL);
+    assert(reputations != NULL);
 
     for (int company = 0; company < nCompanies; company++)
     {
         reputations[company] = 3.0;
     }
 
+    InitKillers();
+    InitQueues();
+
+    Timespec queueTimer;
+    Timespec requestTimer;
+
+    AckReceived = (uint8_t*) calloc(nProcesses, sizeof(uint8_t));
+    assert(AckReceived != NULL);
+
+    pthread_create(&listenerThread, NULL, &Listen, NULL);
+
     /* Process the customer's state machine */
     while(1)
     {
+        pthread_mutex_lock(&threadMutex);
         switch (state)
         {
             /* No new task from this customer yet */
@@ -249,11 +168,10 @@ void RunClient()
                 if (rand() < RAND_MAX * (1.0/SLEEPTIME))
                 {
                     state = NOQUEUE;
-                    localClock++;
+                    // localClock++;
                     startTimer(&queueTimer);
                     Info("Decision made by the customer: looking for a killer");
                 }
-                milisleep(1);
                 break;
             }
             /* The customer has a task for a killer, so find one. No place in a queue yet. */
@@ -262,12 +180,12 @@ void RunClient()
                 /* Send a request to all companies. */
                 Enqueue();
                 state = QUEUE;
-
+                break;
             }
             /* Awaiting for information about the assigned places in the companies' queues. */
             case QUEUE:
             {
-                int success = TryTakeKiller();
+                int success = TryTakeKiller();  // sends TAG_REQUEST on success
                 if (success)
                 {
                     // Info(...);
@@ -275,53 +193,53 @@ void RunClient()
                 }
                 else
                 {
-                    int tag = ReceiveMessage();
-                    // handle messages
+                    pthread_cond_wait(&messageReceivedCond, &threadMutex);
                 }
                 break;
             }
             case REQUESTING:
             {
-                int tag = ReceiveMessage();
+                pthread_cond_wait(&messageReceivedCond, &threadMutex);
+                break;
             }
             case CONFIRMED:
             {
-                // XXX send cancel
+                for (int company = 0; company < nCompanies; company++)
+                {
+                    if (QueueContains(&(Queues[company]), processId))
+                    {
+                        CancelCompany(company);
+                    }
+                }
+                SendTake(requestedCompany, requestedKiller);
+                break;
             }
-
             /* The task/job has been started. Awaiting for completion. */
             case INPROGRESS:
             {
-                while(1)
+                if (rand() < RAND_MAX * (1.0/KILLTIME)) // job finished
                 {
-                    /* Wait for any message of type 'TAG_UPDATE' */
-                    int company = ReceiveUpdate(state);
-                    /* If received confirmation that the job/task is done */
-                    if (queues[company] == Q_DONE)
-                    {
-                        Info("Request fulfilled in %d ms",
-                             elapsedMillis(&requestTimer));
+                    Info("Request fulfilled in %d ms",
+                         elapsedMillis(&requestTimer));
 
-                        /* Determine a review rating for the company. */
-                        float review = (5.0 * rand()) / RAND_MAX;
-                        Debug("sending review of company %d; score = %f",
-                            company, review);
-                        /* Send notification with review rating to all customers. */
-                        SendReview(company, review);
+                    SendRelease(requestedCompany, requestedKiller);
 
-                        /* Now the job/task is done. The customer can consider a next one (if any). */
-                        state = WAITING;
-                        /* Cleanup the information about queues before the next round. */
-                        for (int company = 0; company < nCompanies; company++)
-                        {
-                            queues[company] = Q_NO_UPDATE_RECEIVED;
-                        }
-                        break;
-                    }
+                    /* Determine a review rating for the company. */
+                    float review = (5.0 * rand()) / RAND_MAX;
+                    Debug("sending review of company %d; score = %f",
+                        requestedCompany, review);
+                    /* Send notification with review rating to all customers. */
+                    SendReview(requestedCompany, review);
+
+                    /* Now the job/task is done. The customer can consider a next one (if any). */
+                    state = WAITING;
+                    break;
                 }
                 break;
             }
         }
+        pthread_mutex_unlock(&threadMutex);
+        milisleep(1);
         localClock++;
     }
 }

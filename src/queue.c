@@ -1,4 +1,7 @@
-#include "messaging.h"
+#include <stdlib.h>
+#include <assert.h>
+#include "logging.h"
+#include "common.h"
 #include "queue.h"
 
 void InitQueue(Queue* queue)
@@ -8,7 +11,7 @@ void InitQueue(Queue* queue)
     queue->queueArray = (int*) malloc(nProcesses * sizeof(int));
     for (int qi = 0; qi < nProcesses; qi++)
     {
-        queue[qi] = -1;
+        (queue->queueArray)[qi] = -1;
     }
 
     queue->length = 0;
@@ -79,7 +82,7 @@ void QueueRemove(Queue* queue, int client)
 int QueuePop(Queue* queue)
 {
     assert(queue != NULL);
-    
+
     int queueLen = queue->length;
     int* queueArray = queue->queueArray;
     if (queueLen < 1)
@@ -97,4 +100,21 @@ int QueuePop(Queue* queue)
     Debug("Popped %d from queue", first);
     // PrintQueue();
     return first;
+}
+
+int QueueFind(Queue* queue, int client)
+{
+    assert(queue != NULL);
+    assert(client >= 0 && client < nProcesses);
+
+    int* queueArray = queue->queueArray;
+    int queueLen = queue->length;
+    for (int qi = 0; qi < queueLen; qi++)
+    {
+        if (queueArray[qi] == client)
+        {
+            return qi;
+        }
+    }
+    return -1;
 }

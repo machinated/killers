@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 199309L
 #include <time.h>
-#include "messaging.h"
+#include "logging.h"
+#include "timer.h"
+// #include "messaging.h"
 
 /* This routine stores current time in the given <timer> variable. */
 void startTimer(Timespec* timer)
