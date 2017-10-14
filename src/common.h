@@ -7,6 +7,19 @@
 
 uint64_t localClock;
 
+// Values of a customer's state
+typedef enum State
+{
+    WAITING,       /* A customer has no new task/job yet for a killer. */
+    NOQUEUE,       /* A customer has a task/job, but it is not in any queue yet.
+                    * In this state the customer sends a request to all companies. */
+    QUEUE,
+    REQUESTING,
+    CONFIRMED,
+    INPROGRESS
+} State;
+State state;
+
 int processId;     /* ID of the current process. */
 
 int nProcesses;    /* The total number of processes */

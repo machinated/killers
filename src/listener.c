@@ -73,7 +73,7 @@ void CheckConfirmed()
 
     for (int client = 0; client < nProcesses; client++)
     {
-        if (AckReceived[client] == 0)
+        if (AckReceived[client] == 0 && client != processId)
         {
             return;
         }
@@ -83,11 +83,15 @@ void CheckConfirmed()
     {
         AckReceived[client] = 0;
     }
+    Debug("Request for compnay %d, killer %d is confirmed",
+          requestedCompany, requestedKiller);
     state = CONFIRMED;
 }
 
 void AbortRequest()
 {
+    Debug("Aborting request for company %d, killer %d",
+          requestedCompany, requestedKiller);
     assert(state == REQUESTING);
 
     for (int company = 0; company < nCompanies; company++)
@@ -95,29 +99,6 @@ void AbortRequest()
         AckReceived[company] = 0;
     }
     state = QUEUE;
-}
-
-void PrintReputations()
-{
-    if (logPriority <= LOG_DEBUG)
-    {
-        char* str = (char*) calloc(nCompanies * 5, sizeof(char));
-        char elem[5];
-        for (int ci = 0; ci < nCompanies; ci++)
-        {
-            sprintf(elem, "%.2f ", reputations[ci]);
-            strncat(str, elem, 5);
-        }
-        Debug("REPUTATIONS: %s", str);
-        free(str);
-    }
-}
-
-void HandleReview(MessageReview* msg)
-{
-    reputations[msg->company] = reputations[msg->company] * 0.9 +
-                                msg->review * 0.1;
-    PrintReputations();
 }
 
 // Listener thread function
@@ -151,6 +132,8 @@ void* Listen(__attribute__ ((unused)) void* arg)
             case TAG_CANCEL:
             {
                 MessageCancel* msgCancel = (MessageCancel*) &(msg.data.data);
+                Debug("Received CANCEL from %d, company = %d",
+                      sender, msgCancel->company);
                 Queue* queue = &(Queues[msgCancel->company]);
                 QueueRemove(queue, sender);
                 CheckCancel(msgCancel->company);
@@ -160,6 +143,8 @@ void* Listen(__attribute__ ((unused)) void* arg)
             case TAG_REQUEST:
             {
                 MessageRequest* msgRequest = (MessageRequest*) &(msg.data.data);
+                Debug("Received REQUEST from %d, company = %d, killer = %d",
+                      sender, msgRequest->company, msgRequest->killer);
                 if (state == REQUESTING &&
                     msgRequest->company == requestedCompany &&
                     msgRequest->killer == requestedKiller)          // conflict
@@ -180,6 +165,10 @@ void* Listen(__attribute__ ((unused)) void* arg)
                 {
                     SendAck(sender, ACK_REJECT);
                 }
+                else
+                {
+                    SendAck(sender, ACK_OK);
+                }
                 // TODO note in Queues or somewhere ???
                 break;
             }
@@ -192,6 +181,7 @@ void* Listen(__attribute__ ((unused)) void* arg)
                     if (msgAck->ack == ACK_OK)
                     {
                         AckReceived[sender] = 1;
+                        CheckConfirmed();
                     }
                     else if (msgAck->ack == ACK_REJECT)
                     {
@@ -210,6 +200,8 @@ void* Listen(__attribute__ ((unused)) void* arg)
             case TAG_TAKE:
             {
                 MessageTake* msgTake = (MessageTake*) &(msg.data.data);
+                Debug("Received TAKE from %d, company = %d, killer = %d",
+                      sender, msgTake->company, msgTake->killer);
                 Killers[msgTake->company][msgTake->killer] = KILLER_BUSY;
                 // Queue* queue = &(Queues[msgTake->company]);
                 // QueueRemove(queue, sender);
@@ -219,6 +211,8 @@ void* Listen(__attribute__ ((unused)) void* arg)
             case TAG_RELEASE:
             {
                 MessageRelease* msgRelease = (MessageRelease*) &(msg.data.data);
+                Debug("Received RELEASE from %d, company = %d, killer = %d",
+                      sender, msgRelease->company, msgRelease->killer);
                 Killers[msgRelease->company][msgRelease->killer] = KILLER_FREE;
                 break;
             }
@@ -226,6 +220,8 @@ void* Listen(__attribute__ ((unused)) void* arg)
             case TAG_REVIEW:
             {
                 MessageReview* msgReview = (MessageReview*) &(msg.data.data);
+                Debug("Received REVIEW from %d, company = %d, review = %f",
+                      sender, msgReview->company, msgReview->review);
                 HandleReview(msgReview);
                 break;
             }

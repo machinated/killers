@@ -48,8 +48,6 @@ void InitQueues()
 // Add self to all queues and send TAG_ENQUEUE to every other process
 void Enqueue()
 {
-    SendToAll(NULL, TAG_ENQUEUE);
-
     for (int company = 0; company < nCompanies; company++)
     {
         QueueAdd(&(Queues[company]), processId);
@@ -61,10 +59,11 @@ void Enqueue()
 // and send TAG_CANCEL to every other process
 void CancelCompany(int company)
 {
+    // Debug("CancelCompany, company = %d", company);
     Queue* queue = &(Queues[company]);
     QueueRemove(queue, processId);
     MessageCancel msgCancel;
-    msgCancel.company = processId;
+    msgCancel.company = company;
     SendToAll(&msgCancel, TAG_CANCEL);
 }
 
@@ -107,17 +106,39 @@ int GetFreeCompany(int* company, int* killer)
 
 int TryTakeKiller()
 {
-    int company, killer;
-    if (GetFreeCompany(&company, &killer))
+    if (GetFreeCompany(&requestedCompany, &requestedKiller))
     {
         return 0;
     }
 
     MessageRequest msg;
-    msg.company = company;
-    msg.killer = killer;
+    msg.company = requestedCompany;
+    msg.killer = requestedKiller;
     SendToAll(&msg, TAG_REQUEST);
     return 1;
+}
+
+void PrintReputations()
+{
+    if (logPriority <= LOG_DEBUG)
+    {
+        char* str = (char*) calloc(nCompanies * 5, sizeof(char));
+        char elem[5];
+        for (int ci = 0; ci < nCompanies; ci++)
+        {
+            sprintf(elem, "%.2f ", reputations[ci]);
+            strncat(str, elem, 5);
+        }
+        Debug("REPUTATIONS: %s", str);
+        free(str);
+    }
+}
+
+void HandleReview(MessageReview* msg)
+{
+    reputations[msg->company] = reputations[msg->company] * 0.9 +
+                                msg->review * 0.1;
+    PrintReputations();
 }
 
 // Send notification to all customers about the current <review>
@@ -127,6 +148,7 @@ void SendReview(int company, float review)
     MessageReview msgReview;
     msgReview.company = company;
     msgReview.review = review;
+    HandleReview(&msgReview);   // update local reputation
     SendToAll(&msgReview, TAG_REVIEW);
 }
 
@@ -153,6 +175,9 @@ void RunClient()
 
     AckReceived = (uint8_t*) calloc(nProcesses, sizeof(uint8_t));
     assert(AckReceived != NULL);
+
+    requestedCompany = -1;
+    requestedKiller = -1;
 
     pthread_create(&listenerThread, NULL, &Listen, NULL);
 
@@ -188,7 +213,8 @@ void RunClient()
                 int success = TryTakeKiller();  // sends TAG_REQUEST on success
                 if (success)
                 {
-                    // Info(...);
+                    Info("Now requesting company %d, killer %d",
+                        requestedCompany, requestedKiller);
                     state = REQUESTING;
                 }
                 else
@@ -211,7 +237,12 @@ void RunClient()
                         CancelCompany(company);
                     }
                 }
+                Killers[requestedCompany][requestedKiller] = KILLER_BUSY;
                 SendTake(requestedCompany, requestedKiller);
+                state = INPROGRESS;
+                startTimer(&requestTimer);
+                Info("Started using company %d, killer %d",
+                     requestedCompany, requestedKiller);
                 break;
             }
             /* The task/job has been started. Awaiting for completion. */
@@ -222,6 +253,7 @@ void RunClient()
                     Info("Request fulfilled in %d ms",
                          elapsedMillis(&requestTimer));
 
+                    Killers[requestedCompany][requestedKiller] = KILLER_FREE;
                     SendRelease(requestedCompany, requestedKiller);
 
                     /* Determine a review rating for the company. */
@@ -233,6 +265,8 @@ void RunClient()
 
                     /* Now the job/task is done. The customer can consider a next one (if any). */
                     state = WAITING;
+                    requestedCompany = -1;
+                    requestedKiller = -1;
                     break;
                 }
                 break;

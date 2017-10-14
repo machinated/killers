@@ -42,7 +42,8 @@ void QueueAdd(Queue* queue, int client)
     assert(newIndex >= 0 && newIndex < nProcesses);
     assert((queue->queueArray)[newIndex] == -1);
     (queue->queueArray)[newIndex] = client;
-    queue->length += 1;
+    (queue->length) += 1;
+    Debug("Added %d to queue, length = %d", client, queue->length);
 }
 
 void QueueRemove(Queue* queue, int client)
@@ -52,6 +53,7 @@ void QueueRemove(Queue* queue, int client)
 
     int* queueArray = queue->queueArray;
     int queueLen = queue->length;
+    // Debug("Removing %d from queue, length = %d", client, queue->length);
     int qi;
     int found = 0;
     for (qi = 0; qi < queueLen; qi++)
@@ -59,6 +61,7 @@ void QueueRemove(Queue* queue, int client)
         if (queueArray[qi] == client)
         {
             found = 1;
+            // Debug("QueueRemove: found %d at %d", client, qi);
             break;
         }
     }
@@ -69,9 +72,11 @@ void QueueRemove(Queue* queue, int client)
             queueArray[qi] = queueArray[qi+1];
             // SendUpdate(qi, client);
         }
-        queue->length -= 1;
+        queueArray[queueLen-1] = -1;
+        (queue->length) -= 1;
         // Debug("Removed %d from queue", client);
         // PrintQueue();
+        Debug("Removed %d from queue, length = %d", client, queue->length);
     }
     else
     {
@@ -79,28 +84,29 @@ void QueueRemove(Queue* queue, int client)
     }
 }
 
-int QueuePop(Queue* queue)
-{
-    assert(queue != NULL);
-
-    int queueLen = queue->length;
-    int* queueArray = queue->queueArray;
-    if (queueLen < 1)
-    {
-        Debug("QueuePop: no elements");
-        return NO_CLIENT;
-    }
-    int first = queueArray[0];
-    for (int qi = 0; qi < queueLen - 1; qi++)
-    {
-        queueArray[qi] = queueArray[qi+1];
-        // SendUpdate(qi, Queue[qi]);
-    }
-    queue->length -= 1;
-    Debug("Popped %d from queue", first);
-    // PrintQueue();
-    return first;
-}
+// int QueuePop(Queue* queue)
+// {
+//     assert(queue != NULL);
+//
+//     int queueLen = queue->length;
+//     int* queueArray = queue->queueArray;
+//     if (queueLen < 1)
+//     {
+//         Debug("QueuePop: no elements");
+//         return NO_CLIENT;
+//     }
+//     int first = queueArray[0];
+//     for (int qi = 0; qi < queueLen - 1; qi++)
+//     {
+//         queueArray[qi] = queueArray[qi+1];
+//         // SendUpdate(qi, Queue[qi]);
+//     }
+//     queueArray[queueLen] = -1;
+//     queue->length -= 1;
+//     Debug("Popped %d from queue", first);
+//     // PrintQueue();
+//     return first;
+// }
 
 int QueueFind(Queue* queue, int client)
 {

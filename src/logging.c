@@ -5,12 +5,15 @@
 #include "common.h"
 #include "logging.h"
 
+const char* state_names[20] = {"WAIT", "NOQU", "Q   ", "REQ ", "CONF",
+                            "INPR"};
+
 /* This routine is a helper function for the Log() routine. */
 void _Log(const char* format, va_list args)
 {
-    const char* preFormat = "PROCESS %*d CLK %*d:";
+    const char* preFormat = "PROCESS %*d CLK %*d STATE %*s:";
     char* string = (char*) calloc(150, sizeof(char));
-    sprintf(string, preFormat, 3, processId, 6, localClock);
+    sprintf(string, preFormat, 3, processId, 6, localClock, 4, state_names[state]);
 
     strncat(string, format, 100);   // append format to string
     const char* nl = "\n";

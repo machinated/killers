@@ -24,8 +24,9 @@ void QueueRemove(Queue* queue, int client);
 
 // Remove first element from queue.
 // Return that element or NO_CLIENT when queue is empty
-int QueuePop(Queue* queue);
+// int QueuePop(Queue* queue);
 
+// Return index of client in queue or -1 if not found
 int QueueFind(Queue* queue, int client);
 
 #endif
